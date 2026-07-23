@@ -1,0 +1,15 @@
+[project]
+name = "langchain-rag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "chainlit>=2.11.1",
+    "deepagents>=0.6.12",
+    "dotenv>=0.9.9",
+    "langchain>=1.3.11",
+    "langchain-mcp-adapters>=0.3.0",
+    "langchain-openai>=1.3.5",
+    "tavily-python>=0.7.26",
+]
