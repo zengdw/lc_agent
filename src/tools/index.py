@@ -1,42 +1,41 @@
-import os
-from typing import Literal
-import urllib.error
-import urllib.request
+import subprocess, time
+from langchain_core.tools import tool
 
-from langchain.tools import tool
-from tavily import TavilyClient
+
+MAX_OUTPUT_LENGTH = 20000
 
 
 @tool
-def fetch_text_from_url(url: str) -> str:
-    """Fetch the document from a URL."""
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": "Mozilla/5.0 (compatible; quickstart-research/1.0)"},
-    )
+def run_shell_command(command: str) -> str:
+    """在系统的终端 Shell 中执行给定的 Bash/Shell 命令，并返回标准输出或错误输出。"""
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            raw = resp.read()
-    except urllib.error.URLError as e:
-        return f"Fetch failed: {e}"
-    text = raw.decode("utf-8", errors="replace")
-    return text
+        # 执行命令并捕获输出
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30,  # 设置超时防止无限挂起
+        )
+        output = result.stdout if result.returncode == 0 else result.stderr
+        if not output:
+            return "命令执行成功，无输出。"
 
-
-tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
+        output = output.strip()
+        if len(output) > MAX_OUTPUT_LENGTH:
+            truncated_len = len(output) - MAX_OUTPUT_LENGTH
+            output = (
+                output[:MAX_OUTPUT_LENGTH]
+                + f"\n\n[警告：输出过长 ({len(output)} 字符)，已截断末尾 {truncated_len} 字符]"
+            )
+        return output
+    except subprocess.TimeoutExpired:
+        return "错误：命令执行超时（超过 30 秒）。"
+    except Exception as e:
+        return f"执行失败：{str(e)}"
 
 
 @tool
-def internet_search(
-    query: str,
-    max_results: int = 5,
-    topic: Literal["general", "news", "finance"] = "general",
-    include_raw_content: bool = False,
-):
-    """Run a web search"""
-    return tavily_client.search(
-        query,
-        max_results=max_results,
-        include_raw_content=include_raw_content,
-        topic=topic,
-    )
+def get_current_time():
+    """获取当前时间"""
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())

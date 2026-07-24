@@ -1,4 +1,4 @@
-import asyncio
+import asyncio, os
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 
@@ -14,7 +14,16 @@ async def get_mcp_tools(root_path: str):
                     root_path,
                 ],
                 "encoding": "UTF-8",
-            }
+            },
+            "tavily-mcp": {
+                "transport": "stdio",
+                "command": "npx",
+                "args": ["-y", "tavily-mcp@latest"],
+                "env": {
+                    "TAVILY_API_KEY": os.environ["TAVILY_API_KEY"],
+                    "DEFAULT_PARAMETERS": '{"include_images": true, "max_results": 15, "search_depth": "advanced"}',
+                },
+            },
         }
     )
 

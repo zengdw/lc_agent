@@ -3,8 +3,7 @@ from typing import Dict
 from langchain_core.tools import tool
 from pathlib import Path
 
-SKILLS_DIR = Path(__file__).parent.parent / "skills"
-print(SKILLS_DIR)
+SKILLS_DIR = Path(__file__).parent.parent.parent / "skills"
 
 
 def parse_skill_meta(filepath: str) -> Dict[str, str]:
@@ -59,10 +58,3 @@ def load_skill(skill_name: str) -> str:
 
     meta = parse_skill_meta(target_path)
     return f"--- 已成功加载技能 [{skill_name}] 的执行指南 ---\n\n{meta['body']}"
-
-
-@tool
-def shell_exec(command: str) -> str:
-    """在系统终端中执行 CLI 命令（基础执行工具）"""
-    # 此处仅作模拟，实际可调用 subprocess
-    return f"[模拟 Shell 输出] 成功执行了命令: {command}"

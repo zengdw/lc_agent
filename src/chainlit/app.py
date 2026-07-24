@@ -35,7 +35,7 @@ async def on_message(message: cl.Message):
     msg = cl.Message(content="")
 
     # 使用 LangchainCallbackHandler 将 Tool 调用和思考过程实时渲染在 UI 上
-    cb = cl.LangchainCallbackHandler(stream_final_response=True)
+    cb = cl.LangchainCallbackHandler(stream_final_answer=True)
 
     config: RunnableConfig = {
         "configurable": {"thread_id": thread_id},

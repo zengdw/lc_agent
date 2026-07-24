@@ -6,17 +6,21 @@ load_dotenv()
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
-from tools.index import internet_search, fetch_text_from_url
+from langchain_core.messages import BaseMessage
 from prompt.index import SKILL_AGENT_SYSTEM_PROMPT
 from mcp_tools.index import get_mcp_tools
+from skills.index import list_available_skills, load_skill
+from tools.index import run_shell_command
 
 chat_model = init_chat_model(os.environ["OPENAI_MODEL"])
 
 
 async def get_agent():
-    tools = [internet_search, fetch_text_from_url] + await get_mcp_tools(
-        "C:/Users/zengd/Desktop"
-    )
+    tools = [
+        list_available_skills,
+        load_skill,
+        run_shell_command,
+    ] + await get_mcp_tools("C:/Users/zengd/Desktop")
     agent = create_agent(
         model=chat_model,
         tools=tools,
@@ -28,18 +32,23 @@ async def get_agent():
 
 async def main():
     agent = await get_agent()
-    result = await agent.ainvoke(
+    async for chunk, metadata in agent.astream(
         input={
             "messages": [
                 {
                     "role": "user",
-                    "content": "使用js语言在目录C:/Users/zengd/Desktop/Snake下生成一个贪吃蛇游戏",
+                    "content": "查询重庆沙坪坝区明后2天的天气",
                 }
             ]
         },
         config={"configurable": {"thread_id": "1"}},
-    )
-    print(result["messages"][-1].content_blocks)
+        stream_mode="messages",
+    ):
+        if isinstance(chunk, BaseMessage) and chunk.content:
+            print(chunk.content, end="", flush=True)
+        elif isinstance(chunk, str):
+            print(chunk, end="", flush=True)
+    print()
 
 
 if __name__ == "__main__":
