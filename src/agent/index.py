@@ -10,7 +10,7 @@ from langchain_core.messages import BaseMessage
 from prompt.index import SKILL_AGENT_SYSTEM_PROMPT
 from mcp_tools.index import get_mcp_tools
 from skills.index import list_available_skills, load_skill
-from tools.index import run_shell_command
+from tools.index import run_shell_command, get_current_time
 
 chat_model = init_chat_model(os.environ["OPENAI_MODEL"])
 
@@ -20,6 +20,7 @@ async def get_agent():
         list_available_skills,
         load_skill,
         run_shell_command,
+        get_current_time,
     ] + await get_mcp_tools("C:/Users/zengd/Desktop")
     agent = create_agent(
         model=chat_model,
@@ -37,7 +38,7 @@ async def main():
             "messages": [
                 {
                     "role": "user",
-                    "content": "查询重庆沙坪坝区明后2天的天气",
+                    "content": "今天是几月几号",
                 }
             ]
         },
