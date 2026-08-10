@@ -9,7 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.messages import BaseMessage
 from prompt.index import SKILL_AGENT_SYSTEM_PROMPT
 from mcp_tools.index import get_mcp_tools
-from skills.index import list_available_skills, load_skill
+from skills.index import list_available_skills, load_skill, get_skill_file_path
 from tools.index import run_shell_command, get_current_time
 
 chat_model = init_chat_model(os.environ["OPENAI_MODEL"])
@@ -21,6 +21,7 @@ async def get_agent():
         load_skill,
         run_shell_command,
         get_current_time,
+        get_skill_file_path,
     ] + await get_mcp_tools("C:/Users/zengd/Desktop")
     agent = create_agent(
         model=chat_model,

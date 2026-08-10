@@ -50,7 +50,7 @@ def list_available_skills() -> str:
 def load_skill(skill_name: str) -> str:
     """根据技能名称从磁盘读取并加载该技能的完整 SOP/执行指南。
     参数:
-        skill_name: 技能的唯一标识名称（例如 'github-pr'）
+        skill_name: 技能的唯一标识名称（例如 'github-pr')
     """
     target_path = os.path.join(SKILLS_DIR, skill_name, "SKILL.md")
     if not os.path.exists(target_path):
@@ -58,3 +58,14 @@ def load_skill(skill_name: str) -> str:
 
     meta = parse_skill_meta(target_path)
     return f"--- 已成功加载技能 [{skill_name}] 的执行指南 ---\n\n{meta['body']}"
+
+
+@tool
+def get_skill_file_path(skill_name: str, file_path: str) -> str:
+    """获取skill相关文件的全路径
+    参数:
+        skill_name: 技能的唯一标识名称（例如 'github-pr')
+        file_path: 文件的相对路径
+    """
+    target_path = os.path.join(SKILLS_DIR, skill_name, file_path)
+    return target_path
