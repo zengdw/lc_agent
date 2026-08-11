@@ -1,8 +1,4 @@
 import os, asyncio
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
@@ -21,8 +17,7 @@ async def get_agent():
         load_skill,
         run_shell_command,
         get_current_time,
-        get_skill_file_path,
-    ] + await get_mcp_tools("C:/Users/zengd/Desktop")
+    ] + await get_mcp_tools("/home/zdw/lc_agent")
     agent = create_agent(
         model=chat_model,
         tools=tools,

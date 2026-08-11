@@ -26,7 +26,7 @@ def parse_skill_meta(filepath: str) -> Dict[str, str]:
 # ================= 定义渐进式披露的核心工具 =================
 
 
-@tool
+# @tool
 def list_available_skills() -> str:
     """获取系统中所有已安装技能的索引目录（仅包含技能名称和简短描述）。
     当你感觉需要特定领域的复杂操作 SOP 或专家指南时，请先调用此工具查看可用技能。
@@ -39,9 +39,9 @@ def list_available_skills() -> str:
         for file in files:
             if file == "SKILL.md":
                 meta = parse_skill_meta(os.path.join(root, file))
-                skills_index.append(
-                    f"- **{meta.get('name')}**: {meta.get('description')}"
-                )
+                skills_index.append(f"- **skill_name**: {meta.get('name')}")
+                skills_index.append(f"  **description**: {meta.get('description')}")
+                skills_index.append(f"  **skill_folder**: {root}")
 
     return "系统当前可用的技能目录如下：\n" + "\n".join(skills_index)
 

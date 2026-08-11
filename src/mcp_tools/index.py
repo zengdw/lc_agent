@@ -33,5 +33,5 @@ async def get_mcp_tools(root_path: str):
 
 
 if __name__ == "__main__":
-    tools = asyncio.run(get_mcp_tools("C:/Users/zengd/Desktop"))
+    tools = asyncio.run(get_mcp_tools("/home/zdw/lc_agent"))
     print(tools)
