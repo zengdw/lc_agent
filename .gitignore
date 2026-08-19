@@ -11,4 +11,3 @@ wheels/
 venv/
 
 .env
-.chainlit
