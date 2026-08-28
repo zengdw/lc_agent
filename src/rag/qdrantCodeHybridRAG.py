@@ -10,8 +10,8 @@ from customOpenAIEmbedding import CustomOpenAIEmbedding
 class QdrantCodeHybridRAG:
     def __init__(
         self,
-        collection_name: str = "code_hybrid_kb",
-        qdrant_path: str = "./qdrant_data",  # 本地持久化目录，或传 url="http://localhost:6333"
+        collection_name: str,
+        qdrant_path: str,  # 本地持久化目录，或传 url="http://localhost:6333"
     ):
         self.collection_name = collection_name
         self.qdrant_path = qdrant_path
@@ -73,9 +73,7 @@ class QdrantCodeHybridRAG:
         )
         print(f"[清理完成] 已移除 {file_path} 的所有历史数据")
 
-    async def index_code_chunks(
-        self, code_chunks: List[Dict], batch_size: int = 64
-    ):
+    async def index_code_chunks(self, code_chunks: List[Dict], batch_size: int = 64):
         """
         异步分批计算 Dense 与 Sparse 向量并写入 Qdrant（高吞吐批量模式）
         """
@@ -90,7 +88,10 @@ class QdrantCodeHybridRAG:
 
         for i in range(0, total_chunks, batch_size):
             batch = code_chunks[i : i + batch_size]
-            texts = [f"{chunk.get('context', '')}\n{chunk.get('content', '')}" for chunk in batch]
+            texts = [
+                f"{chunk.get('context', '')}\n{chunk.get('content', '')}"
+                for chunk in batch
+            ]
 
             # 1. 批量异步请求 OpenAI 接口计算 Dense 向量
             dense_embeddings = await self.dense_model.aembed_documents(texts)
@@ -196,6 +197,12 @@ class QdrantCodeHybridRAG:
         for point in search_result.points:
             results.append({"score": point.score, **(point.payload or {})})
         return results
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 
     async def close(self):
         """释放 AsyncQdrantClient 连接资源"""

@@ -2,24 +2,12 @@ import os, traceback
 from pathlib import Path
 from typing import List, Dict, Set, Generator, Tuple
 from codeASTSplitter import CodeASTSplitter
+from astLanguageConfig import DEFAULT_EXT_TO_LANG
 
 
 class CodebaseLoader:
-    # 默认支持的代码后缀与对应 tree-sitter 解析语言
-    DEFAULT_EXT_TO_LANG = {
-        ".py": "python",
-        ".ts": "typescript",
-        ".tsx": "typescript",
-        ".js": "typescript",
-        ".jsx": "typescript",
-        ".java": "java",
-        # 兜底纯文本/脚本文件（将回退到行切分）
-        ".md": "text",
-        ".json": "text",
-        ".yaml": "text",
-        ".yml": "text",
-        ".sql": "text",
-    }
+    DEFAULT_EXT_TO_LANG = DEFAULT_EXT_TO_LANG
+
 
     # 默认忽略的目录名
     DEFAULT_IGNORE_DIRS: Set[str] = {
