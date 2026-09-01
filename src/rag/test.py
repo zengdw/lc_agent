@@ -1,15 +1,16 @@
-import asyncio
+import asyncio, os
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from qdrantCodeHybridRAG import QdrantCodeHybridRAG
+from codeContextRetriever import CodeContextRetriever
 
 
-async def main():
+async def index():
     async with QdrantCodeHybridRAG(
         collection_name="snake_kb",
-        qdrant_path="C:/Users/zengd/Desktop/lc_agent/qdrant_hybrid_storage",
+        qdrant_path=os.environ["QDRANT_PATH"],
     ) as rag:
         print("\n🔍 1. 正在扫描并切分代码库...")
         # 1. 全异步批量并发计算 Embedding 并写入 Qdrant (原生 AsyncQdrantClient + AsyncOpenAI)
@@ -27,5 +28,16 @@ async def main():
     print("\n🎉 3. 全异步流程测试完毕（连接已自动释放）！")
 
 
+async def retriever():
+    async with QdrantCodeHybridRAG(
+        collection_name="snake_kb",
+        qdrant_path=os.environ["QDRANT_PATH"],
+    ) as rag:
+        retriever_instance = CodeContextRetriever(rag=rag)
+        prompt = await retriever_instance.retrieve_context_for_query("随机生成食物")
+        print("\n=== 检索并构建的 Prompt ===")
+        print(prompt)
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(retriever())
