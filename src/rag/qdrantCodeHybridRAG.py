@@ -1,5 +1,6 @@
 import uuid
 import asyncio
+import os
 import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
@@ -192,7 +193,7 @@ class QdrantCodeHybridRAG:
             await self.index_code_chunks(chunk_dicts)
 
     async def sync_directory(
-        self, repo_dir: str, force_full: bool = False, batch_size: int = 64
+        self, repo_dir: str, force_full: bool = False
     ) -> Dict[str, Any]:
         """
         自动比对文件指纹（mtime + size）进行智能同步：
@@ -231,7 +232,9 @@ class QdrantCodeHybridRAG:
         if not cached_meta or force_full:
             print(f"[RAG 知识库] 首次启动/全量更新：正在为 {repo_dir} 构建索引...")
             await self.index_directory(
-                repo_dir=str(repo_path), clean_existing=True, batch_size=batch_size
+                repo_dir=str(repo_path),
+                clean_existing=True,
+                batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", 5)),
             )
             # 持久化文件指纹缓存
             try:
