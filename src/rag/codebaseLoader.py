@@ -1,13 +1,12 @@
 import os, traceback
 from pathlib import Path
 from typing import List, Dict, Set, Generator, Tuple
-from codeASTSplitter import CodeASTSplitter
-from astLanguageConfig import DEFAULT_EXT_TO_LANG
+from rag.codeASTSplitter import CodeASTSplitter
+from rag.astLanguageConfig import DEFAULT_EXT_TO_LANG
 
 
 class CodebaseLoader:
     DEFAULT_EXT_TO_LANG = DEFAULT_EXT_TO_LANG
-
 
     # 默认忽略的目录名
     DEFAULT_IGNORE_DIRS: Set[str] = {

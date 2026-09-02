@@ -3,8 +3,8 @@ import re
 import asyncio
 from typing import List, Dict, Any, Optional
 from qdrant_client import models
-from qdrantCodeHybridRAG import QdrantCodeHybridRAG
-from astLanguageConfig import DEFAULT_EXT_TO_LANG
+from rag.qdrantCodeHybridRAG import QdrantCodeHybridRAG
+from rag.astLanguageConfig import DEFAULT_EXT_TO_LANG
 
 
 class CodeContextRetriever:

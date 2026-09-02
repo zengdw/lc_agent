@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Optional, Set
 from tree_sitter import Parser
-from astLanguageConfig import (
+from rag.astLanguageConfig import (
     get_or_install_language,
     LANGUAGE_CONFIGS,
     is_heuristic_target,
@@ -44,7 +44,9 @@ class CodeASTSplitter:
         lang_cfg = LANGUAGE_CONFIGS.get(self.language)
         if custom_target_nodes is not None:
             self.target_node_types = custom_target_nodes
-            self.container_node_types = lang_cfg.get("containers", set()) if lang_cfg else set()
+            self.container_node_types = (
+                lang_cfg.get("containers", set()) if lang_cfg else set()
+            )
         elif lang_cfg:
             self.target_node_types = lang_cfg.get("targets", set())
             self.container_node_types = lang_cfg.get("containers", set())
@@ -90,14 +92,24 @@ class CodeASTSplitter:
             is_target = self._is_target(node)
 
             # 过滤函数体内部的局部变量 assignment，只保留顶级模块或类属性级别的变量
-            if node.type in {"assignment", "lexical_declaration", "variable_declaration"} and not is_top_level:
+            if (
+                node.type
+                in {"assignment", "lexical_declaration", "variable_declaration"}
+                and not is_top_level
+            ):
                 is_target = False
 
             # 命中目标函数、类、标签或顶级变量
             if is_target:
-                node_text = code_bytes[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
+                node_text = code_bytes[node.start_byte : node.end_byte].decode(
+                    "utf-8", errors="replace"
+                )
                 name = self._get_node_name(node, code_bytes)
-                current_scope = f"{scope_prefix}.{name}" if (scope_prefix and name and name != "document") else (name or scope_prefix)
+                current_scope = (
+                    f"{scope_prefix}.{name}"
+                    if (scope_prefix and name and name != "document")
+                    else (name or scope_prefix)
+                )
 
                 # 仅容器节点超长时才递归下钻拆分子节点；函数/方法本身保持完整
                 if len(node_text) > self.max_chunk_size and self._is_container(node):
@@ -106,7 +118,10 @@ class CodeASTSplitter:
                 else:
                     context = f"// File: {file_path}\n// Scope: {current_scope}\n{header_context}\n"
                     chunk_type = node.type
-                    if node.type in {"function_definition", "function_declaration"} and any(c.type == "async" for c in node.children):
+                    if node.type in {
+                        "function_definition",
+                        "function_declaration",
+                    } and any(c.type == "async" for c in node.children):
                         chunk_type = "async_function"
                     elif node.type in {
                         "assignment",
@@ -139,7 +154,15 @@ class CodeASTSplitter:
                 for child in node.children:
                     # 顶级节点包括 root_node 以及包裹 assignment 的 expression_statement / export_statement
                     is_child_top = node == root_node or (
-                        node.type in {"module", "program", "source_file", "translation_unit", "expression_statement", "export_statement"}
+                        node.type
+                        in {
+                            "module",
+                            "program",
+                            "source_file",
+                            "translation_unit",
+                            "expression_statement",
+                            "export_statement",
+                        }
                         and is_top_level
                     )
                     traverse(child, scope_prefix, is_top_level=is_child_top)
@@ -162,9 +185,13 @@ class CodeASTSplitter:
                 if child.type in {"start_tag", "self_closing_tag"}:
                     for sub in child.children:
                         if sub.type == "tag_name":
-                            tag_name = code_bytes[sub.start_byte : sub.end_byte].decode("utf-8", errors="replace")
+                            tag_name = code_bytes[sub.start_byte : sub.end_byte].decode(
+                                "utf-8", errors="replace"
+                            )
                         elif sub.type == "attribute":
-                            attr_text = code_bytes[sub.start_byte : sub.end_byte].decode("utf-8", errors="replace")
+                            attr_text = code_bytes[
+                                sub.start_byte : sub.end_byte
+                            ].decode("utf-8", errors="replace")
                             if attr_text.startswith("id="):
                                 attr_id = attr_text.split("=", 1)[1].strip("\"'")
                             elif attr_text.startswith("class="):
@@ -182,15 +209,25 @@ class CodeASTSplitter:
 
         # 2. Python assignment
         if node.type == "assignment" and node.children:
-            return code_bytes[node.children[0].start_byte : node.children[0].end_byte].decode("utf-8", errors="replace").strip()
+            return (
+                code_bytes[node.children[0].start_byte : node.children[0].end_byte]
+                .decode("utf-8", errors="replace")
+                .strip()
+            )
 
         # 3. JS / TS / Java / C# 变量与字段声明
-        if node.type in {"lexical_declaration", "variable_declaration", "field_declaration"}:
+        if node.type in {
+            "lexical_declaration",
+            "variable_declaration",
+            "field_declaration",
+        }:
             for child in node.children:
                 if child.type == "variable_declarator":
                     for sub in child.children:
                         if sub.type in {"identifier", "name"}:
-                            return code_bytes[sub.start_byte : sub.end_byte].decode("utf-8", errors="replace")
+                            return code_bytes[sub.start_byte : sub.end_byte].decode(
+                                "utf-8", errors="replace"
+                            )
 
         # 4. Go type_declaration / function_declaration / method_declaration
         if node.type == "type_declaration":
@@ -198,25 +235,49 @@ class CodeASTSplitter:
                 if child.type == "type_spec":
                     for sub in child.children:
                         if sub.type == "type_identifier":
-                            return code_bytes[sub.start_byte : sub.end_byte].decode("utf-8", errors="replace")
+                            return code_bytes[sub.start_byte : sub.end_byte].decode(
+                                "utf-8", errors="replace"
+                            )
 
         # 5. 通用 identifier / name / type_identifier / property_identifier
         for child in node.children:
-            if child.type in {"identifier", "name", "type_identifier", "property_identifier", "field_identifier"}:
-                return code_bytes[child.start_byte : child.end_byte].decode("utf-8", errors="replace")
+            if child.type in {
+                "identifier",
+                "name",
+                "type_identifier",
+                "property_identifier",
+                "field_identifier",
+            }:
+                return code_bytes[child.start_byte : child.end_byte].decode(
+                    "utf-8", errors="replace"
+                )
         return "anonymous"
 
-    def _extract_header_imports(self, root_node, code_bytes: bytes, max_lines: int = 15) -> str:
+    def _extract_header_imports(
+        self, root_node, code_bytes: bytes, max_lines: int = 15
+    ) -> str:
         """提取头部 import / package / use / using / include / doctype / head 语句（截取前 N 行）"""
         imports = []
         for child in root_node.children:
-            if any(k in child.type for k in ("import", "use", "using", "include", "package", "doctype")):
-                imports.append(code_bytes[child.start_byte : child.end_byte].decode("utf-8", errors="replace"))
+            if any(
+                k in child.type
+                for k in ("import", "use", "using", "include", "package", "doctype")
+            ):
+                imports.append(
+                    code_bytes[child.start_byte : child.end_byte].decode(
+                        "utf-8", errors="replace"
+                    )
+                )
             elif child.type == "element":
                 # HTML <head> 标签抽取
                 for sub in child.children:
-                    if sub.type == "start_tag" and b"head" in code_bytes[sub.start_byte : sub.end_byte]:
-                        head_text = code_bytes[child.start_byte : child.end_byte].decode("utf-8", errors="replace")
+                    if (
+                        sub.type == "start_tag"
+                        and b"head" in code_bytes[sub.start_byte : sub.end_byte]
+                    ):
+                        head_text = code_bytes[
+                            child.start_byte : child.end_byte
+                        ].decode("utf-8", errors="replace")
                         imports.append("\n".join(head_text.splitlines()[:max_lines]))
                         break
             if len(imports) >= max_lines:

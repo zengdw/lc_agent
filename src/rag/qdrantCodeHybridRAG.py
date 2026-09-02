@@ -1,10 +1,13 @@
 import uuid
 import asyncio
+import json
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from qdrant_client import AsyncQdrantClient, models
 from fastembed import SparseTextEmbedding
-from codebaseLoader import CodebaseLoader
-from customOpenAIEmbedding import CustomOpenAIEmbedding
+from rag.codebaseLoader import CodebaseLoader
+from rag.codeASTSplitter import CodeASTSplitter
+from rag.customOpenAIEmbedding import CustomOpenAIEmbedding
 
 
 class QdrantCodeHybridRAG:
@@ -42,15 +45,16 @@ class QdrantCodeHybridRAG:
             )
             print(f"已成功创建集合: {self.collection_name}")
 
-            # 为 file_path 创建 Keyword 索引，加速按文件路径精确删除/过滤
-            try:
-                await self.client.create_payload_index(
-                    collection_name=self.collection_name,
-                    field_name="file_path",
-                    field_schema=models.PayloadSchemaType.KEYWORD,
-                )
-            except Exception:
-                pass
+            # 仅在连接远程 Qdrant Server 时才需要显式创建 payload 索引（本地模式自带遍历过滤，无需创建）
+            if not self.qdrant_path:
+                try:
+                    await self.client.create_payload_index(
+                        collection_name=self.collection_name,
+                        field_name="file_path",
+                        field_schema=models.PayloadSchemaType.KEYWORD,
+                    )
+                except Exception:
+                    pass
 
         self._collection_initialized = True
 
@@ -131,8 +135,6 @@ class QdrantCodeHybridRAG:
         print(f"✅ 成功完成全部 {points_count} 个代码片段的索引构建！")
 
     # 兼容别名
-    aindex_code_chunks = index_code_chunks
-
     async def index_directory(
         self, repo_dir: str, clean_existing: bool = True, batch_size: int = 64
     ):
@@ -154,6 +156,148 @@ class QdrantCodeHybridRAG:
         # 批量构建索引
         await self.index_code_chunks(all_chunks, batch_size=batch_size)
         print(f"代码库 {repo_dir} 索引构建完成！")
+
+    async def index_file(
+        self, file_path: str, base_dir: Optional[str] = None, max_chunk_size: int = 1500
+    ):
+        """
+        单文件增量热更新：物理清理该文件旧向量并重新 AST 切分与写入
+        """
+        path_obj = Path(file_path).resolve()
+        if base_dir:
+            base_path = Path(base_dir).resolve()
+            rel_path = path_obj.relative_to(base_path).as_posix()
+        else:
+            rel_path = str(file_path).replace("\\", "/")
+
+        # 1. 物理删除旧数据
+        await self.delete_by_file_path(rel_path)
+
+        if not path_obj.exists() or not path_obj.is_file():
+            return
+
+        # 2. 读取并切分
+        ext = path_obj.suffix.lower()
+        from astLanguageConfig import DEFAULT_EXT_TO_LANG
+
+        lang = DEFAULT_EXT_TO_LANG.get(ext)
+        content = path_obj.read_text(encoding="utf-8", errors="ignore")
+        if not content.strip():
+            return
+
+        splitter = CodeASTSplitter(language=lang, max_chunk_size=max_chunk_size)
+        chunks = splitter.split_file(file_path=rel_path, code_content=content)
+        if chunks:
+            chunk_dicts = [c.__dict__ if hasattr(c, "__dict__") else c for c in chunks]
+            await self.index_code_chunks(chunk_dicts)
+
+    async def sync_directory(
+        self, repo_dir: str, force_full: bool = False, batch_size: int = 64
+    ) -> Dict[str, Any]:
+        """
+        自动比对文件指纹（mtime + size）进行智能同步：
+        - 首次启动：全量扫描并切分构建，保存指纹元数据
+        - 再次启动：比对差异，无变更则直接跳过（0开销），有变动则仅增量热更新变更文件
+        """
+        repo_path = Path(repo_dir).resolve()
+        if not repo_path.exists():
+            return {"status": "dir_not_found", "repo_dir": repo_dir}
+
+        # 确定指纹元数据存储文件（存放在 qdrant_path 内部，避免污染用户项目）
+        meta_file = Path(self.qdrant_path) / f"{self.collection_name}_files_meta.json"
+        cached_meta: Dict[str, Dict[str, Any]] = {}
+        if meta_file.exists() and not force_full:
+            try:
+                cached_meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            except Exception:
+                cached_meta = {}
+
+        # 扫描工作区有效代码文件
+        loader = CodebaseLoader(base_dir=str(repo_path))
+        current_files: Dict[str, Dict[str, Any]] = {}
+        for file_path in loader.walk_files():
+            rel = file_path.relative_to(repo_path).as_posix()
+            try:
+                stat = file_path.stat()
+                current_files[rel] = {
+                    "mtime": stat.st_mtime,
+                    "size": stat.st_size,
+                    "abs_path": str(file_path),
+                }
+            except Exception:
+                continue
+
+        # 1. 首次启动或强制全量构建
+        if not cached_meta or force_full:
+            print(f"[RAG 知识库] 首次启动/全量更新：正在为 {repo_dir} 构建索引...")
+            await self.index_directory(
+                repo_dir=str(repo_path), clean_existing=True, batch_size=batch_size
+            )
+            # 持久化文件指纹缓存
+            try:
+                meta_file.parent.mkdir(parents=True, exist_ok=True)
+                meta_file.write_text(
+                    json.dumps(current_files, ensure_ascii=False, indent=2),
+                    encoding="utf-8",
+                )
+            except Exception as e:
+                print(f"[RAG 知识库] 保存元数据指纹失败: {e}")
+
+            return {
+                "status": "full_indexed",
+                "total_files": len(current_files),
+            }
+
+        # 2. 再次启动：差异比对
+        cur_keys = set(current_files.keys())
+        old_keys = set(cached_meta.keys())
+
+        added_keys = cur_keys - old_keys
+        deleted_keys = old_keys - cur_keys
+        modified_keys = {
+            k
+            for k in (cur_keys & old_keys)
+            if current_files[k]["mtime"] != cached_meta[k].get("mtime")
+            or current_files[k]["size"] != cached_meta[k].get("size")
+        }
+
+        changed_count = len(added_keys) + len(modified_keys) + len(deleted_keys)
+        if changed_count == 0:
+            print(
+                f"[RAG 知识库] 校验完成：代码库无变更，跳过索引（共 {len(current_files)} 个文件）。"
+            )
+            return {"status": "no_change", "total_files": len(current_files)}
+
+        print(
+            f"[RAG 知识库] 检测到代码变动 (新增: {len(added_keys)}, 修改: {len(modified_keys)}, 删除: {len(deleted_keys)})，开始增量同步..."
+        )
+
+        # 清理已删除文件的旧向量
+        for rel in deleted_keys:
+            await self.delete_by_file_path(rel)
+
+        # 增量更新新增与被修改的文件
+        for rel in added_keys | modified_keys:
+            abs_p = current_files[rel]["abs_path"]
+            await self.index_file(abs_p, base_dir=str(repo_path))
+
+        # 保存更新后的元数据缓存
+        try:
+            meta_file.write_text(
+                json.dumps(current_files, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            print(f"[RAG 知识库] 保存元数据指纹失败: {e}")
+
+        print(f"[RAG 知识库] ✅ 增量同步完成！")
+        return {
+            "status": "incrementally_synced",
+            "added": len(added_keys),
+            "modified": len(modified_keys),
+            "deleted": len(deleted_keys),
+            "total_files": len(current_files),
+        }
 
     async def hybrid_search(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         """
