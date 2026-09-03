@@ -8,7 +8,8 @@ from qdrant_client import AsyncQdrantClient, models
 from fastembed import SparseTextEmbedding
 from rag.codebaseLoader import CodebaseLoader
 from rag.codeASTSplitter import CodeASTSplitter
-from rag.customOpenAIEmbedding import CustomOpenAIEmbedding
+from rag.astLanguageConfig import DEFAULT_EXT_TO_LANG
+from langchain_openai import OpenAIEmbeddings
 
 
 class QdrantCodeHybridRAG:
@@ -16,21 +17,39 @@ class QdrantCodeHybridRAG:
         self,
         collection_name: str,
         qdrant_path: str,  # 本地持久化目录，或传 url="http://localhost:6333"
+        dense_model: Optional[OpenAIEmbeddings] = None,
     ):
         self.collection_name = collection_name
         self.qdrant_path = qdrant_path
 
-        # 1. 初始化异步客户端与向量模型
+        # 1. 初始化异步客户端与向量模型（使用 LangChain OpenAIEmbeddings 集成）
         self.client = AsyncQdrantClient(path=qdrant_path)
-        self.dense_model = CustomOpenAIEmbedding()
+        self.dense_model = dense_model or OpenAIEmbeddings(
+            base_url=os.environ["EMBEDDING_BASE_URL"],
+            api_key=os.environ["EMBEDDING_API_KEY"],
+            model=os.environ["EMBEDDING_MODEL"],
+            check_embedding_ctx_length=False,
+        )
+        self._dense_dim: Optional[int] = None
         # BM25 稀疏模型 (FastEmbed 本地分词与权重计算)
         self.sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
         self._collection_initialized = False
 
+    async def get_dense_dimension(self) -> int:
+        """异步获取 Dense 向量维度（若未缓存则通过探针查询获取）"""
+        if self._dense_dim is not None:
+            return self._dense_dim
+        if hasattr(self.dense_model, "dimensions") and self.dense_model.dimensions:
+            self._dense_dim = self.dense_model.dimensions
+            return self._dense_dim
+        probe = await self.dense_model.aembed_query("probe")
+        self._dense_dim = len(probe)
+        return self._dense_dim
+
     async def setup_collection(self):
         """异步定义包含 Dense 和 Sparse 两种向量命名的 Schema"""
         if not await self.client.collection_exists(self.collection_name):
-            dense_dim = await self.dense_model.aget_dimension()
+            dense_dim = await self.get_dense_dimension()
             await self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config={
@@ -179,7 +198,6 @@ class QdrantCodeHybridRAG:
 
         # 2. 读取并切分
         ext = path_obj.suffix.lower()
-        from astLanguageConfig import DEFAULT_EXT_TO_LANG
 
         lang = DEFAULT_EXT_TO_LANG.get(ext)
         content = path_obj.read_text(encoding="utf-8", errors="ignore")

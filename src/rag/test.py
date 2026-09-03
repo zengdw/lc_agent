@@ -1,10 +1,13 @@
-import asyncio, os
+import asyncio, os, sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).parent.parent))
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from qdrantCodeHybridRAG import QdrantCodeHybridRAG
-from codeContextRetriever import CodeContextRetriever
+from rag.qdrantCodeHybridRAG import QdrantCodeHybridRAG
+from rag.codeContextRetriever import CodeContextRetriever
 
 
 async def index():
