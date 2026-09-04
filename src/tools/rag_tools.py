@@ -81,6 +81,20 @@ async def retrieve_code_context(
     if not _retriever_instance or not _current_workspace:
         return "当前尚未选定任何项目工作区，无法检索代码知识库。"
 
+    # 检查工作区是否为空目录（通过元数据缓存快速判断）
+    try:
+        qdrant_storage = os.environ.get("QDRANT_PATH") or "./qdrant_data"
+        coll_name = get_collection_name_for_workspace(_current_workspace)
+        meta_file = Path(qdrant_storage) / f"{coll_name}_files_meta.json"
+        if meta_file.exists():
+            import json
+
+            cached = json.loads(meta_file.read_text(encoding="utf-8"))
+            if not cached:
+                return "当前项目工作区为空（暂无任何代码文件）。无需检索知识库，你可以直接根据用户需求从零编写代码或进行架构设计。"
+    except Exception:
+        pass
+
     try:
         context_prompt = await _retriever_instance.retrieve_context_for_query(
             query=query,

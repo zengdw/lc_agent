@@ -31,8 +31,17 @@ class QdrantCodeHybridRAG:
             check_embedding_ctx_length=False,
         )
         self._dense_dim: Optional[int] = None
-        # BM25 稀疏模型 (FastEmbed 本地分词与权重计算)
-        self.sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
+        # BM25 稀疏模型 (FastEmbed 本地分词与权重计算，优先使用本地停用词目录避免联网超时)
+        current_dir = Path(__file__).resolve().parent
+        bm25_local_path = current_dir / "bm25_model"
+        if bm25_local_path.exists():
+            self.sparse_model = SparseTextEmbedding(
+                model_name="Qdrant/bm25",
+                specific_model_path=str(bm25_local_path),
+                local_files_only=True,
+            )
+        else:
+            self.sparse_model = SparseTextEmbedding(model_name="Qdrant/bm25")
         self._collection_initialized = False
 
     async def get_dense_dimension(self) -> int:
@@ -97,7 +106,7 @@ class QdrantCodeHybridRAG:
         )
         print(f"[清理完成] 已移除 {file_path} 的所有历史数据")
 
-    async def index_code_chunks(self, code_chunks: List[Dict], batch_size: int = 64):
+    async def index_code_chunks(self, code_chunks: List[Dict]):
         """
         异步分批计算 Dense 与 Sparse 向量并写入 Qdrant（高吞吐批量模式）
         """
@@ -110,6 +119,7 @@ class QdrantCodeHybridRAG:
         total_chunks = len(code_chunks)
         points_count = 0
 
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", 5))
         for i in range(0, total_chunks, batch_size):
             batch = code_chunks[i : i + batch_size]
             texts = [
@@ -155,9 +165,7 @@ class QdrantCodeHybridRAG:
         print(f"✅ 成功完成全部 {points_count} 个代码片段的索引构建！")
 
     # 兼容别名
-    async def index_directory(
-        self, repo_dir: str, clean_existing: bool = True, batch_size: int = 64
-    ):
+    async def index_directory(self, repo_dir: str, clean_existing: bool = True):
         """
         一键遍历本地代码库并构建/更新混合索引（全异步流程）
         """
@@ -174,7 +182,7 @@ class QdrantCodeHybridRAG:
             return
 
         # 批量构建索引
-        await self.index_code_chunks(all_chunks, batch_size=batch_size)
+        await self.index_code_chunks(all_chunks)
         print(f"代码库 {repo_dir} 索引构建完成！")
 
     async def index_file(
@@ -246,14 +254,28 @@ class QdrantCodeHybridRAG:
             except Exception:
                 continue
 
+        # 如果工作区为空或未检测到任何有效代码文件
+        if not current_files:
+            if cached_meta:
+                for rel in cached_meta.keys():
+                    await self.delete_by_file_path(rel)
+            try:
+                meta_file.parent.mkdir(parents=True, exist_ok=True)
+                meta_file.write_text("{}", encoding="utf-8")
+            except Exception as e:
+                print(f"[RAG 知识库] 保存空元数据指纹失败: {e}")
+
+            print(f"[RAG 知识库] 工作区 {repo_dir} 为空或无代码文件，已标记为空项目。")
+            return {
+                "status": "empty_workspace",
+                "total_files": 0,
+                "message": "工作区为空或未检测到受支持的代码文件",
+            }
+
         # 1. 首次启动或强制全量构建
         if not cached_meta or force_full:
             print(f"[RAG 知识库] 首次启动/全量更新：正在为 {repo_dir} 构建索引...")
-            await self.index_directory(
-                repo_dir=str(repo_path),
-                clean_existing=True,
-                batch_size=int(os.getenv("EMBEDDING_BATCH_SIZE", 5)),
-            )
+            await self.index_directory(repo_dir=str(repo_path), clean_existing=True)
             # 持久化文件指纹缓存
             try:
                 meta_file.parent.mkdir(parents=True, exist_ok=True)

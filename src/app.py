@@ -211,7 +211,12 @@ async def handle_folder_selection_and_index(current_path: str) -> tuple[str, str
     try:
         sync_res = await auto_sync_codebase(selected_dir)
         status = sync_res.get("status")
-        if status == "full_indexed":
+        if status == "empty_workspace":
+            detail = "当前工作区为空（未检测到代码文件）。已为你完成就绪，你可以直接向智能体提问，从零开始搭建和编写新项目！"
+            await get_cached_agent(selected_dir)
+            print(f"[Workspace] {detail}\n")
+            return selected_dir, build_status_html("info", "工作区已就绪（空白项目）", detail)
+        elif status == "full_indexed":
             detail = f"首次全量索引构建完成！共成功索引 {sync_res.get('total_files', 0)} 个工程代码文件。"
         elif status == "no_change":
             detail = f"代码索引校验通过：代码库无变更，智能体已热就绪（共 {sync_res.get('total_files', 0)} 个代码文件）。"
@@ -225,8 +230,11 @@ async def handle_folder_selection_and_index(current_path: str) -> tuple[str, str
         print(f"[Workspace] {detail}\n")
         return selected_dir, build_status_html("success", "代码库知识库已就绪", detail)
     except Exception as e:
+        import traceback
+
         err_msg = f"索引构建失败: {str(e)}"
         print(f"[Workspace] {err_msg}")
+        traceback.print_exc()
         return selected_dir, build_status_html("danger", "代码索引异常", err_msg)
 
 
@@ -242,7 +250,11 @@ async def handle_manual_sync(path: str) -> str:
     try:
         sync_res = await auto_sync_codebase(target)
         status = sync_res.get("status")
-        if status == "full_indexed":
+        if status == "empty_workspace":
+            detail = "当前工作区为空（未检测到代码文件）。你可以直接向智能体提问，从零开始创建新项目与代码！"
+            await get_cached_agent(target)
+            return build_status_html("info", "工作区已就绪（空白项目）", detail)
+        elif status == "full_indexed":
             detail = f"全量重新索引构建完成！共索引 {sync_res.get('total_files', 0)} 个代码文件。"
         elif status == "no_change":
             detail = f"索引无变更：当前代码库状态与知识库完全一致（共 {sync_res.get('total_files', 0)} 个文件）。"
