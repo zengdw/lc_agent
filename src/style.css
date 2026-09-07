@@ -1,0 +1,495 @@
+/* 全局容器最大宽度与居中 */
+.gradio-container {
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    padding: 24px 20px 48px 20px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 顶部品牌卡片 */
+.hero-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8faff 50%, #f1f5ff 100%);
+    border: 1px solid #e0e7ff;
+    border-radius: 18px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.08), 0 8px 10px -6px rgba(79, 70, 229, 0.04);
+}
+
+.hero-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.hero-brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.hero-avatar-box {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+    flex-shrink: 0;
+}
+
+.hero-title-group h1 {
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    letter-spacing: -0.5px;
+    margin: 0 !important;
+    background: linear-gradient(120deg, #1e293b 0%, #312e81 60%, #4f46e5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle {
+    margin: 4px 0 0 0;
+    font-size: 13.5px;
+    color: #64748b;
+    font-weight: 400;
+}
+
+.hero-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.tech-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    transition: all 0.2s ease;
+}
+
+.tech-pill:hover {
+    border-color: #cbd5e1;
+    transform: translateY(-1px);
+}
+
+.pill-indigo {
+    background: #eef2ff;
+    border-color: #c7d2fe;
+    color: #4338ca;
+}
+
+.pill-emerald {
+    background: #ecfdf5;
+    border-color: #a7f3d0;
+    color: #065f46;
+}
+
+/* 控制台卡片区域 */
+.console-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05);
+}
+
+.console-header-label {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 状态通知横幅 */
+.status-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-top: 14px;
+    transition: all 0.3s ease;
+}
+
+.status-warning {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    color: #92400e;
+}
+
+.status-success {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    color: #166534;
+}
+
+.status-danger {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #991b1b;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    position: relative;
+    padding-top: 2px;
+}
+
+.pulse-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    position: relative;
+}
+
+.dot-warning {
+    background: #f59e0b;
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
+    animation: pulse-warn 2s infinite;
+}
+
+.dot-success {
+    background: #10b981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    animation: pulse-succ 2s infinite;
+}
+
+.dot-danger {
+    background: #ef4444;
+}
+
+@keyframes pulse-warn {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+@keyframes pulse-succ {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+    70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+
+.status-content {
+    flex: 1;
+}
+
+.status-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.status-desc {
+    font-size: 12.5px;
+    opacity: 0.9;
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+/* 按钮微动效 */
+.primary-btn-styled {
+    font-weight: 600 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 3px 10px rgba(79, 70, 229, 0.25) !important;
+    transition: all 0.2s ease !important;
+}
+
+.primary-btn-styled:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 5px 15px rgba(79, 70, 229, 0.35) !important;
+}
+
+/* 工具调用折叠卡片 */
+.tool-call-card {
+    background: #f8fafc !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 12px !important;
+    padding: 12px 16px !important;
+    margin: 14px 0 !important;
+    font-size: 13px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+.tool-call-summary {
+    cursor: pointer !important;
+    font-weight: 600 !important;
+    color: #1e293b !important;
+    outline: none !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    user-select: none !important;
+}
+
+.tool-call-summary code {
+    background: #e0e7ff !important;
+    color: #4338ca !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+    font-size: 12px !important;
+    border: 1px solid #c7d2fe !important;
+}
+
+.tool-badge {
+    background: #ecfdf5 !important;
+    color: #047857 !important;
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
+    border: 1px solid #a7f3d0 !important;
+}
+
+.tool-call-body {
+    margin-top: 10px !important;
+    border-top: 1px dashed #cbd5e1 !important;
+    padding-top: 10px !important;
+}
+
+.tool-meta-label {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    color: #475569 !important;
+    margin: 8px 0 4px 0 !important;
+}
+
+/* 工具代码输入与输出终端区域 - 强制覆盖 Gradio 内置的 Prose/Code 样式，避免黑底黑字看不清 */
+.tool-pre,
+pre.tool-pre,
+div.tool-call-body pre,
+.prose pre.tool-pre {
+    background: #0f172a !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    margin: 4px 0 10px 0 !important;
+    font-size: 12.5px !important;
+    line-height: 1.55 !important;
+    overflow-x: auto !important;
+    max-height: 180px !important;
+    overflow-y: auto !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25) !important;
+}
+
+/* 强制重置 pre 内部的 code 标签样式，确保文字高对比度、清晰可辨 */
+.tool-pre code,
+pre.tool-pre code,
+.prose pre.tool-pre code,
+div.tool-call-body pre code,
+.tool-pre *,
+pre.tool-pre * {
+    background: transparent !important;
+    color: #f1f5f9 !important; /* 明亮清晰的浅白文字 */
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+    font-size: 12px !important;
+    line-height: 1.55 !important;
+    white-space: pre-wrap !important; /* 自动折行，阅读更佳 */
+    word-break: break-word !important;
+    border: none !important;
+    padding: 0 !important;
+    font-weight: 400 !important;
+}
+
+/* 输入参数框微调 */
+.tool-args-pre code,
+pre.tool-args-pre code {
+    color: #e2e8f0 !important;
+}
+
+/* 执行结果框高亮：使用醒目的天蓝色，阅读体验极佳 */
+.tool-result-pre,
+pre.tool-result-pre {
+    background: #0b1120 !important;
+    border-color: #1e293b !important;
+    max-height: 280px !important;
+}
+
+.tool-result-pre code,
+pre.tool-result-pre code {
+    color: #38bdf8 !important; /* 天空蓝文字，在暗色背景下对比度极高且舒适 */
+}
+
+/* 空状态欢迎区 */
+.empty-hero-box {
+    text-align: center;
+    padding: 36px 16px;
+    color: #475569;
+}
+
+.empty-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+    animation: float-anim 3s ease-in-out infinite;
+}
+
+@keyframes float-anim {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-6px); }
+    100% { transform: translateY(0px); }
+}
+
+.empty-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 6px;
+}
+
+.empty-desc {
+    font-size: 13.5px;
+    color: #64748b;
+    max-width: 520px;
+    margin: 0 auto 20px auto;
+    line-height: 1.5;
+}
+
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    max-width: 680px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.feature-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.feature-item span {
+    font-size: 16px;
+}
+
+/* 聊天框阴影与圆角微调 */
+#main-chatbot {
+    border-radius: 14px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* 网页全屏按钮与全屏模式样式 */
+.chatbot-fs-btn {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 26px !important;
+    height: 26px !important;
+    padding: 0 !important;
+    margin-right: 6px !important;
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
+    color: #64748b !important;
+    cursor: pointer !important;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    flex-shrink: 0 !important;
+}
+
+.chatbot-fs-btn:hover {
+    background: #f1f5f9 !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+    transform: scale(1.05) !important;
+}
+
+.chatbot-fs-btn:active {
+    transform: scale(0.95) !important;
+}
+
+.chatbot-fs-btn svg {
+    pointer-events: none !important;
+}
+
+/* 兜底绝对定位 (若未能挂载在 toolbar 内) */
+.chatbot-fs-btn-fallback {
+    position: absolute !important;
+    top: 12px !important;
+    right: 46px !important;
+    z-index: 100 !important;
+    background: #ffffff !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* 全屏状态激活时的 body 锁定与 Chatbot 样式 */
+body.chatbot-fullscreen-open {
+    overflow: hidden !important;
+}
+
+#main-chatbot.chatbot-fullscreen {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    min-height: 100vh !important;
+    z-index: 999999 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#main-chatbot.chatbot-fullscreen .chatbot-fs-btn {
+    background: #eef2ff !important;
+    color: #4f46e5 !important;
+    border-color: #c7d2fe !important;
+}
+
+#main-chatbot.chatbot-fullscreen > div {
+    flex: 1 1 0% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+#main-chatbot.chatbot-fullscreen .bubble-wrap,
+#main-chatbot.chatbot-fullscreen .message-wrap,
+#main-chatbot.chatbot-fullscreen [data-testid="chatbot-messages"],
+#main-chatbot.chatbot-fullscreen .scroll-hide,
+#main-chatbot.chatbot-fullscreen .wrapper {
+    flex: 1 1 0% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+}
