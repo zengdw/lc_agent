@@ -127,8 +127,18 @@ class QdrantCodeHybridRAG:
                 for chunk in batch
             ]
 
-            # 1. 批量异步请求 OpenAI 接口计算 Dense 向量
-            dense_embeddings = await self.dense_model.aembed_documents(texts)
+            # 1. 批量异步请求 OpenAI 接口计算 Dense 向量（增加网关波动自动重试机制）
+            dense_embeddings = None
+            for attempt in range(1, 4):
+                try:
+                    dense_embeddings = await self.dense_model.aembed_documents(texts)
+                    break
+                except Exception as embed_err:
+                    print(f"[RAG Embedding] 向量生成异常，尝试第 {attempt}/3 次重试: {embed_err}")
+                    if attempt < 3:
+                        await asyncio.sleep(2 * attempt)
+                    else:
+                        raise embed_err
 
             # 2. 批量计算 Sparse (BM25) 向量（FastEmbed 为 CPU 密集型，投递到线程池避免阻塞事件循环）
             sparse_embeddings = await asyncio.to_thread(

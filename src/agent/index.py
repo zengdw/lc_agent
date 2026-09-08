@@ -2,7 +2,7 @@ import os, asyncio
 from typing import List
 from langgraph.prebuilt import create_react_agent
 from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import InMemorySaver
+from agent.session_manager import get_checkpointer
 from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage
 from prompt.index import CODE_AGENT_SYSTEM_PROMPT
 from mcp_tools.index import get_mcp_tools
@@ -75,7 +75,7 @@ async def get_agent(workspace_path: str):
         model=chat_model,
         tools=tools,
         prompt=prune_history_tool_messages,
-        checkpointer=InMemorySaver(),
+        checkpointer=await get_checkpointer(),
     )
     return agent
 

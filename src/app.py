@@ -18,23 +18,46 @@ from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import BaseMessage, ToolMessage
 
+from agent.session_manager import (
+    create_session,
+    list_sessions,
+    get_session,
+    update_session_title,
+    update_session_workspace,
+    touch_session,
+    delete_session,
+    get_session_choices,
+    get_session_messages_for_chatbot,
+    render_session_list_html,
+)
+
 # 全局保存 agent 实例、当前工作区与当前会话 ID
 _agent: CompiledStateGraph | None = None
 _current_workspace: str | None = None
-_current_thread_id: str = str(uuid.uuid4())
+
+# 初始化会话：优先加载数据库中最近活跃会话，若无则自动新建
+_existing_sessions = list_sessions()
+if _existing_sessions:
+    _current_thread_id: str = _existing_sessions[0]["session_id"]
+    _initial_chatbot_messages = asyncio.run(
+        get_session_messages_for_chatbot(_current_thread_id)
+    )
+    _current_workspace = _existing_sessions[0].get("workspace_path") or None
+else:
+    _current_thread_id: str = create_session(title="新会话")
+    _initial_chatbot_messages = []
 
 
 async def get_cached_agent(workspace_path: str) -> CompiledStateGraph:
     """按工作区路径懒加载并缓存 Agent 实例"""
-    global _agent, _current_workspace, _current_thread_id
+    global _agent, _current_workspace
     ws = os.path.abspath(workspace_path.strip())
 
-    # 如果工作区发生变化，重新创建 Agent 并开启新会话
+    # 如果工作区发生变化，重新创建 Agent 实例
     if _agent is None or _current_workspace != ws:
         print(f"[Workspace] 切换工作区: {_current_workspace} -> {ws}")
         _current_workspace = ws
         _agent = await get_agent(ws)
-        _current_thread_id = str(uuid.uuid4())
 
     return _agent
 
@@ -61,6 +84,24 @@ def build_status_html(status_type: str, title: str, desc: str) -> str:
     )
 
 
+def get_workspace_status_for_session(ws_path: str) -> tuple[str, str]:
+    """根据会话绑定的工作区路径返回 (workspace_input_val, status_html)"""
+    target = (ws_path or "").strip()
+    if not target:
+        init_html = build_status_html(
+            "warning",
+            "尚未绑定项目工作区",
+            "请点击上方「📂 浏览选择文件夹」绑定本地项目根目录后开始交互；支持在对话框中发送 /new 重置会话。",
+        )
+        return "", init_html
+    if os.path.exists(target):
+        detail = f"已恢复当前会话绑定的工作区：`{target}`。智能体已热就绪，可以直接开始对话交互！"
+        return target, build_status_html("success", "代码库知识库已就绪", detail)
+    else:
+        detail = f"该会话原绑定的工作区路径不存在或已被移动：`{target}`，请重新选择本地项目根目录。"
+        return target, build_status_html("warning", "工作区路径未找到", detail)
+
+
 async def predict(
     message: str, history: list, workspace_path: str = ""
 ) -> AsyncGenerator[str, None]:
@@ -77,11 +118,24 @@ async def predict(
         return
 
     clean_msg = message.strip()
-    # 当用户输入 /new 时清空上下文并重置会话
+    # 当用户输入 /new 时清空上下文并新建持久会话
     if clean_msg.lower() in ("/new", "/clear", "/reset"):
-        _current_thread_id = str(uuid.uuid4())
-        yield "🔄 **会话已成功重置！** 历史上下文已清空，开启全新的代码工程交互。"
+        _current_thread_id = create_session(title="新会话", workspace_path=ws)
+        yield "🔄 **已创建全新会话！** 历史上下文已就绪，请输入新的开发需求开启交互。"
         return
+
+    # 若当前会话标题为默认的“新会话”，则提取首条提问作为标题
+    sess = get_session(_current_thread_id)
+    if sess and sess.get("title") in ("新会话", ""):
+        first_line = clean_msg.split("\n")[0].strip()
+        summary_title = first_line if len(first_line) <= 18 else first_line[:17] + "..."
+        update_session_title(_current_thread_id, summary_title)
+    else:
+        touch_session(_current_thread_id)
+
+    # 若当前会话尚未绑定该工作区，自动更新持久化绑定
+    if sess and sess.get("workspace_path") != ws:
+        update_session_workspace(_current_thread_id, ws)
 
     agent = await get_cached_agent(ws)
 
@@ -174,7 +228,13 @@ async def predict(
 
     finally:
         # 对话轮次结束后，在后台非阻塞执行当前工作区的增量指纹同步（若有文件变动则毫秒级热更新）
-        asyncio.create_task(auto_sync_codebase(ws))
+        async def _safe_bg_sync(target_ws: str):
+            try:
+                await auto_sync_codebase(target_ws)
+            except Exception as sync_err:
+                print(f"[Workspace] 后台代码库增量同步异常 (已捕获处理): {sync_err}")
+
+        asyncio.create_task(_safe_bg_sync(ws))
 
     # 兜底保障：若未产生任何输出，确保至少 yield 一次
     if not response:
@@ -207,6 +267,7 @@ def open_folder_dialog(current_path: str) -> str:
 
 async def handle_folder_selection_and_index(current_path: str) -> tuple[str, str]:
     """选择文件夹并在选定后立即触发该项目的索引构建/指纹增量同步"""
+    global _current_workspace, _current_thread_id
     selected_dir = open_folder_dialog(current_path)
     if not selected_dir or not os.path.exists(selected_dir):
         return current_path, build_status_html(
@@ -220,11 +281,17 @@ async def handle_folder_selection_and_index(current_path: str) -> tuple[str, str
     try:
         sync_res = await auto_sync_codebase(selected_dir)
         status = sync_res.get("status")
+        # 预热并初始化该工作区 Agent，同时更新当前会话工作区记录
+        _current_workspace = selected_dir
+        update_session_workspace(_current_thread_id, selected_dir)
+        await get_cached_agent(selected_dir)
+
         if status == "empty_workspace":
             detail = "当前工作区为空（未检测到代码文件）。已为你完成就绪，你可以直接向智能体提问，从零开始搭建和编写新项目！"
-            await get_cached_agent(selected_dir)
             print(f"[Workspace] {detail}\n")
-            return selected_dir, build_status_html("info", "工作区已就绪（空白项目）", detail)
+            return selected_dir, build_status_html(
+                "info", "工作区已就绪（空白项目）", detail
+            )
         elif status == "full_indexed":
             detail = f"首次全量索引构建完成！共成功索引 {sync_res.get('total_files', 0)} 个工程代码文件。"
         elif status == "no_change":
@@ -234,8 +301,6 @@ async def handle_folder_selection_and_index(current_path: str) -> tuple[str, str
         else:
             detail = f"索引处理完成：{sync_res}"
 
-        # 预热并初始化该工作区 Agent
-        await get_cached_agent(selected_dir)
         print(f"[Workspace] {detail}\n")
         return selected_dir, build_status_html("success", "代码库知识库已就绪", detail)
     except Exception as e:
@@ -249,6 +314,7 @@ async def handle_folder_selection_and_index(current_path: str) -> tuple[str, str
 
 async def handle_manual_sync(path: str) -> str:
     """手动点击或输入框修改后触发索引同步"""
+    global _current_workspace, _current_thread_id
     target = (path or "").strip()
     if not target or not os.path.exists(target):
         return build_status_html(
@@ -259,9 +325,12 @@ async def handle_manual_sync(path: str) -> str:
     try:
         sync_res = await auto_sync_codebase(target)
         status = sync_res.get("status")
+        _current_workspace = target
+        update_session_workspace(_current_thread_id, target)
+        await get_cached_agent(target)
+
         if status == "empty_workspace":
             detail = "当前工作区为空（未检测到代码文件）。你可以直接向智能体提问，从零开始创建新项目与代码！"
-            await get_cached_agent(target)
             return build_status_html("info", "工作区已就绪（空白项目）", detail)
         elif status == "full_indexed":
             detail = f"全量重新索引构建完成！共索引 {sync_res.get('total_files', 0)} 个代码文件。"
@@ -271,7 +340,6 @@ async def handle_manual_sync(path: str) -> str:
             detail = f"增量同步完成！新增: {sync_res.get('added', 0)}, 修改: {sync_res.get('modified', 0)}, 删除: {sync_res.get('deleted', 0)}。"
         else:
             detail = f"索引处理完成：{sync_res}"
-        await get_cached_agent(target)
         return build_status_html("success", "知识库重新同步完成", detail)
     except Exception as e:
         return build_status_html("danger", "知识库同步失败", str(e))
@@ -308,18 +376,31 @@ fullscreen_head_html = f"<script>\n{script_js}\n</script>"
 empty_state_html = load_resource("templates", "empty_state.html")
 hero_card_html = load_resource("templates", "hero.html")
 
-init_status_html = build_status_html(
-    "warning",
-    "尚未绑定项目工作区",
-    "请点击上方「📂 浏览选择文件夹」绑定本地项目根目录后开始交互；支持在对话框中发送 /new 重置会话。",
+_init_ws_val, init_status_html = get_workspace_status_for_session(
+    _current_workspace or ""
 )
 
 # -------------------------------------------------------------
 # 构建 Gradio Blocks 主应用
 # -------------------------------------------------------------
-with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库", head=fullscreen_head_html) as demo:
+with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as demo:
     # 顶部 Hero Header 卡片
     gr.HTML(hero_card_html)
+
+    # 左侧会话历史侧边栏
+    with gr.Sidebar(label="会话管理", open=True):
+        new_chat_btn = gr.Button(
+            "➕ 新建会话",
+            variant="primary",
+            elem_classes=["primary-btn-styled", "new-chat-btn"],
+        )
+        with gr.Row(elem_classes=["session-list-header-row"]):
+            gr.HTML('<div class="session-list-header-title">历史会话列表</div>')
+
+        session_list_html = gr.HTML(
+            value=render_session_list_html(_current_thread_id),
+            elem_id="custom-session-container",
+        )
 
     # 工作区控制台面板
     with gr.Column(elem_classes=["console-card"]):
@@ -329,7 +410,7 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库", he
         with gr.Row():
             workspace_input = gr.Textbox(
                 show_label=False,
-                value="",
+                value=_init_ws_val,
                 placeholder="请选择或粘贴本地代码库根目录绝对路径（如 C:/Users/zengd/Desktop/Snake）...",
                 scale=7,
                 container=False,
@@ -363,36 +444,241 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库", he
         outputs=[status_display],
     )
 
-    # 快捷 Prompt 示例指令
-    quick_examples = [
-        ["🔍 分析当前项目的目录结构与核心业务架构", ""],
-        ["🛡️ 检查代码库中的潜在逻辑漏洞与性能瓶颈", ""],
-        ["✨ 帮我理清核心模块的业务流转过程与关键函数", ""],
-        ["🧪 为核心模块编写清晰且高覆盖率的单元测试", ""],
-    ]
+    # 对话界面组件（通过 wrapper 容器包裹，支持全屏时一并纳入输入框）
+    with gr.Column(elem_id="chat-interface-wrapper"):
+        chat = gr.ChatInterface(
+            fn=predict,
+            additional_inputs=[workspace_input],
+            chatbot=gr.Chatbot(
+                value=_initial_chatbot_messages,
+                height=430,
+                placeholder=empty_state_html,
+                buttons=["copy"],
+                render_markdown=True,
+                elem_id="main-chatbot",
+            ),
+            textbox=gr.Textbox(
+                placeholder="💬 请输入您的开发需求、重构任务或代码提问（输入 /new 开启新会话）...",
+                container=False,
+                scale=8,
+                submit_btn=True,
+                stop_btn=True,
+            ),
+            submit_btn=True,
+            stop_btn=True,
+            run_examples_on_click=False,
+        )
 
-    # 对话界面组件
-    chat = gr.ChatInterface(
-        fn=predict,
-        additional_inputs=[workspace_input],
-        chatbot=gr.Chatbot(
-            height=540,
-            placeholder=empty_state_html,
-            buttons=["copy"],
-            render_markdown=True,
-            elem_id="main-chatbot",
-        ),
-        textbox=gr.Textbox(
-            placeholder="💬 请输入您的开发需求、重构任务或代码提问（输入 /new 开启新会话）...",
-            container=False,
-            scale=8,
-        ),
-        examples=quick_examples,
-        run_examples_on_click=False,
+    # 隐藏的跨前端后端通信桥梁（放置于主容器底部，不占用侧边栏任何视觉空间与边框）
+    with gr.Row(elem_id="session-hidden-bridge-container"):
+        target_select_input = gr.Textbox(
+            elem_id="target-select-session-id",
+            elem_classes=["hidden-action-trigger"],
+        )
+        target_select_btn = gr.Button(
+            elem_id="target-select-btn",
+            elem_classes=["hidden-action-trigger"],
+        )
+        target_delete_input = gr.Textbox(
+            elem_id="target-delete-session-id",
+            elem_classes=["hidden-action-trigger"],
+        )
+        target_delete_btn = gr.Button(
+            elem_id="target-delete-btn",
+            elem_classes=["hidden-action-trigger"],
+        )
+
+    # 会话管理交互事件绑定
+    async def on_select_session(target_sid: str):
+        """用户点击切换会话：联动同步消息历史与绑定的工作区路径和状态"""
+        global _current_thread_id, _current_workspace
+        sid = (target_sid or "").strip()
+        if not sid:
+            sid = _current_thread_id
+        else:
+            _current_thread_id = sid
+
+        msgs = await get_session_messages_for_chatbot(_current_thread_id)
+        sess = get_session(_current_thread_id)
+        ws_path = sess.get("workspace_path", "") if sess else ""
+        ws_val, status_html = get_workspace_status_for_session(ws_path)
+
+        if ws_val and os.path.exists(ws_val):
+            _current_workspace = ws_val
+            asyncio.create_task(get_cached_agent(ws_val))
+        else:
+            _current_workspace = None
+
+        return (
+            render_session_list_html(_current_thread_id),
+            msgs,
+            msgs,
+            ws_val,
+            status_html,
+        )
+
+    target_select_btn.click(
+        fn=on_select_session,
+        inputs=[target_select_input],
+        outputs=[
+            session_list_html,
+            chat.chatbot,
+            chat.chatbot_state,
+            workspace_input,
+            status_display,
+        ],
+        js="() => [window.__target_select_session_id || '']",
     )
 
-    # 注入全屏控制脚本
-    gr.HTML(fullscreen_head_html)
+    def on_new_chat(current_input_ws: str):
+        """点击新建会话按钮：继承当前工作区并联动更新路径与状态"""
+        global _current_thread_id, _current_workspace
+        ws_to_bind = (current_input_ws or _current_workspace or "").strip()
+        _current_thread_id = create_session(
+            title="新会话", workspace_path=ws_to_bind
+        )
+        ws_val, status_html = get_workspace_status_for_session(ws_to_bind)
+        if ws_val and os.path.exists(ws_val):
+            _current_workspace = ws_val
+        return (
+            render_session_list_html(_current_thread_id),
+            [],
+            [],
+            ws_val,
+            status_html,
+        )
+
+    new_chat_btn.click(
+        fn=on_new_chat,
+        inputs=[workspace_input],
+        outputs=[
+            session_list_html,
+            chat.chatbot,
+            chat.chatbot_state,
+            workspace_input,
+            status_display,
+        ],
+    )
+
+    async def on_delete_specific_session(target_sid: str):
+        """删除指定 ID 的会话（由列表项右侧垃圾桶触发）"""
+        global _current_thread_id, _current_workspace
+        sid_to_delete = target_sid.strip() if target_sid else ""
+        print(f"[SESSION DELETE] 接收到待删除 target_sid: '{sid_to_delete}'")
+        if not sid_to_delete:
+            print("[SESSION DELETE] 警告：未获取到明确的 target_sid，拒绝删除以避免误删！")
+            msgs = await get_session_messages_for_chatbot(_current_thread_id)
+            sess = get_session(_current_thread_id)
+            ws_path = sess.get("workspace_path", "") if sess else ""
+            ws_val, status_html = get_workspace_status_for_session(ws_path)
+            return (
+                render_session_list_html(_current_thread_id),
+                msgs,
+                msgs,
+                ws_val,
+                status_html,
+            )
+
+        delete_session(sid_to_delete)
+        print(f"[SESSION DELETE] 成功删除会话 ID: {sid_to_delete}")
+
+        remaining = list_sessions()
+        if remaining:
+            remaining_ids = [s["session_id"] for s in remaining]
+            # 若删除的是当前正在查看的会话，才自动切换到列表第一条；否则保持当前查看的会话
+            if _current_thread_id == sid_to_delete or _current_thread_id not in remaining_ids:
+                _current_thread_id = remaining[0]["session_id"]
+            msgs = await get_session_messages_for_chatbot(_current_thread_id)
+        else:
+            _current_thread_id = create_session(
+                title="新会话", workspace_path=_current_workspace or ""
+            )
+            msgs = []
+
+        sess = get_session(_current_thread_id)
+        ws_path = sess.get("workspace_path", "") if sess else ""
+        ws_val, status_html = get_workspace_status_for_session(ws_path)
+        if ws_val and os.path.exists(ws_val):
+            _current_workspace = ws_val
+        else:
+            _current_workspace = None
+
+        return (
+            render_session_list_html(_current_thread_id),
+            msgs,
+            msgs,
+            ws_val,
+            status_html,
+        )
+
+    target_delete_btn.click(
+        fn=on_delete_specific_session,
+        inputs=[target_delete_input],
+        outputs=[
+            session_list_html,
+            chat.chatbot,
+            chat.chatbot_state,
+            workspace_input,
+            status_display,
+        ],
+        js="() => [window.__target_delete_session_id || '']",
+    )
+
+    async def on_app_load():
+        """页面首次载入或刷新时动态同步最新会话与消息及工作区状态"""
+        global _current_thread_id, _current_workspace
+        sessions = list_sessions()
+        if sessions:
+            sids = [s["session_id"] for s in sessions]
+            if _current_thread_id not in sids:
+                _current_thread_id = sessions[0]["session_id"]
+        else:
+            _current_thread_id = create_session(
+                title="新会话", workspace_path=_current_workspace or ""
+            )
+
+        msgs = await get_session_messages_for_chatbot(_current_thread_id)
+        sess = get_session(_current_thread_id)
+        ws_path = sess.get("workspace_path", "") if sess else ""
+        ws_val, status_html = get_workspace_status_for_session(ws_path)
+        if ws_val and os.path.exists(ws_val):
+            _current_workspace = ws_val
+        else:
+            _current_workspace = None
+
+        return (
+            render_session_list_html(_current_thread_id),
+            msgs,
+            msgs,
+            ws_val,
+            status_html,
+        )
+
+    demo.load(
+        fn=on_app_load,
+        inputs=[],
+        outputs=[
+            session_list_html,
+            chat.chatbot,
+            chat.chatbot_state,
+            workspace_input,
+            status_display,
+        ],
+    )
 
 if __name__ == "__main__":
-    demo.launch(theme=custom_theme, css=custom_css)
+    import signal
+
+    def _handle_exit(*args):
+        print("\n[LC Agent] 服务已终止，正在退出...")
+        os._exit(0)
+
+    # 注册系统中断信号，防止 Windows 下 Gradio/Uvicorn/aiosqlite 后台线程挂起导致 Ctrl+C 卡死
+    signal.signal(signal.SIGINT, _handle_exit)
+    signal.signal(signal.SIGTERM, _handle_exit)
+
+    try:
+        demo.launch(theme=custom_theme, css=custom_css, head=fullscreen_head_html)
+    finally:
+        os._exit(0)
+
