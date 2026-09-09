@@ -1,4 +1,4 @@
-(function() {
+(function () {
     const ENTER_FS_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
     const EXIT_FS_ICON = '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6m0 0v6m0-6L3 21m17-7h-6m0 0v6m0-6l7 7M4 10h6m0 0V4m0 6L3 3m17 7h-6m0 0V4m0 6l7-7"/></svg>';
 
@@ -27,7 +27,7 @@
     function toggleFullscreen(forceState) {
         const target = getFullscreenTarget();
         if (!target) return;
-        
+
         let isFull;
         if (typeof forceState === "boolean") {
             isFull = forceState;
@@ -35,11 +35,11 @@
         } else {
             isFull = target.classList.toggle("chat-wrapper-fullscreen");
         }
-        
+
         // 彻底锁定根容器滚动条，避免外层出现多余滚动条
         document.documentElement.classList.toggle("chatbot-fullscreen-open", isFull);
         document.body.classList.toggle("chatbot-fullscreen-open", isFull);
-        
+
         const btn = document.getElementById("chatbot-fs-btn");
         setBtnState(btn, isFull);
     }
@@ -57,7 +57,7 @@
             const isFull = isFullscreenActive();
             setBtnState(fsBtn, isFull);
 
-            fsBtn.onclick = function(e) {
+            fsBtn.onclick = function (e) {
                 e.preventDefault();
                 e.stopPropagation();
                 toggleFullscreen();
@@ -128,7 +128,7 @@
                 if (el && (el.scrollHeight > 0 || el.clientHeight > 0)) {
                     return el;
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
 
         // 递归查找首个 overflow-y 为 auto/scroll 的容器
@@ -210,12 +210,12 @@
         if (!container || container === scrollContainer) return;
 
         scrollContainer = container;
-        createScrollToBottomBtn();
+        // createScrollToBottomBtn();
 
-        scrollContainer.addEventListener("scroll", function() {
+        scrollContainer.addEventListener("scroll", function () {
             const threshold = 120; // 距离底部的容差像素
             const distanceToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
-            
+
             if (distanceToBottom > threshold) {
                 // 用户主动往上翻看历史，暂停自动吸底，显示回到最新按钮
                 autoScrollEnabled = false;
@@ -261,7 +261,7 @@
     // -----------------------------------------------------------------
     // 历史会话列表交互分发 (Session Select & Delete Handlers)
     // -----------------------------------------------------------------
-    window.handleSessionClick = function(e, sid) {
+    window.handleSessionClick = function (e, sid) {
         if (!sid) return;
         if (e && e.target && e.target.closest(".session-del-btn")) {
             return;
@@ -278,7 +278,7 @@
         }
     };
 
-    window.handleSessionDelete = function(e, sid) {
+    window.handleSessionDelete = function (e, sid) {
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -293,7 +293,7 @@
     };
 
     // 监听 ESC 键退出全屏
-    document.addEventListener("keydown", function(e) {
+    document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
             if (isFullscreenActive()) {
                 toggleFullscreen(false);
@@ -315,7 +315,7 @@
 
     // 监听动态 DOM 变更：保持按钮注入、图标更新，并进行流式吸底
     let scrollThrottleTimer = null;
-    const obs = new MutationObserver(function() {
+    const obs = new MutationObserver(function () {
         injectFullscreenBtn();
         attachScrollListener();
         customizeInputButtons();
@@ -331,9 +331,9 @@
         }
     });
 
-    obs.observe(document.documentElement, { 
-        childList: true, 
-        subtree: true, 
-        characterData: true 
+    obs.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        characterData: true
     });
 })();

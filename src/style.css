@@ -1,19 +1,91 @@
-/* 全局容器最大宽度与自适应布局 */
-.gradio-container {
-    max-width: 1440px;
-    margin: 0 auto;
-    padding: 14px 20px 24px 20px;
-    box-sizing: border-box;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* 全局容器与侧边栏对称布局系统 */
+:root {
+    --custom-sidebar-width: 280px;
 }
 
-/* 当侧边栏展开时，精准让出左侧侧边栏及其凸出的折叠按钮空间，确保主内容区绝不被遮挡 */
-.sidebar-parent:has(.sidebar.open:not(.right)),
-.gradio-container:has(.sidebar.open:not(.right)),
-.gradio-container:has(aside.open),
-.gradio-container:has([class*="sidebar"][class*="open"]) {
-    padding-left: calc(var(--overlap-amount, 320px) + 28px) !important;
+.html-container.svelte-1jts93g {
+    padding: unset;
+}
+
+/* 全局容器最大宽度与自适应布局 */
+.gradio-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 清除 Gradio 对 sidebar-parent 默认添加的单侧不对称偏置 */
+.sidebar-parent,
+.sidebar-parent:has(.sidebar.open),
+.sidebar-parent:has(aside[open]) {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    display: flex !important;
+    width: 100% !important;
+}
+
+/* 统一侧边栏宽度与隐藏/展开偏移 */
+aside.sidebar {
+    width: var(--custom-sidebar-width) !important;
+    left: calc(var(--custom-sidebar-width) * -1) !important;
+}
+
+/* 主内容容器：填充侧边栏右侧至屏幕边缘的剩余区域，保证两侧空白完全对称且互不遮挡 */
+.gradio-container .main {
+    flex: 1 1 0% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 14px 36px 24px 56px !important;
+    box-sizing: border-box !important;
+    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 当侧边栏展开时，主内容区让出侧边栏宽度及折叠按钮(32px)的物理空间，并保持左右两端舒适对称的安全间隙 */
+.sidebar-parent:has(.sidebar.open:not(.right))>.main,
+.sidebar-parent:has(aside[open])>.main,
+.gradio-container:has(.sidebar.open:not(.right)) .main,
+.gradio-container:has(aside.open) .main,
+.gradio-container:has(aside[open]) .main,
+.gradio-container:has([class*="sidebar"][open]) .main,
+.gradio-container:has([class*="sidebar"][class*="open"]) .main {
+    margin-left: calc(var(--custom-sidebar-width) + 32px) !important;
+    width: calc(100% - var(--custom-sidebar-width) - 32px) !important;
+    max-width: calc(100% - var(--custom-sidebar-width) - 32px) !important;
+    padding: 14px 32px 24px 32px !important;
+}
+
+/* 彻底清除顶部 Hero 卡片的外层 Gradio block 包装器的所有默认内边距、外边距、边框和背景，确保与下方控制台及对话框 100% 同宽对齐 */
+.gradio-container .hero-wrapper-block,
+.gradio-container .block:has(> .hero-card),
+.gradio-container .gradio-html:has(.hero-card),
+.gradio-container div:has(> .hero-card) {
+    padding: 0 !important;
+    margin-top: 0 !important;
+    margin-bottom: 8px !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 1400px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    box-sizing: border-box !important;
+}
+
+/* 主内容区核心卡片统一居中，确保各卡片左间距、右间距、宽度完全一致 */
+.gradio-container .hero-card,
+.gradio-container .console-card,
+.gradio-container #chat-interface-wrapper,
+.gradio-container .main>div {
+    max-width: 1400px;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 /* 全屏沉浸模式下忽略侧边栏边距 */
@@ -28,8 +100,10 @@ html.chatbot-fullscreen-open .gradio-container {
     border: 1px solid #e0e7ff;
     border-radius: 14px;
     padding: 12px 18px;
-    margin-bottom: 8px;
+    margin-bottom: 0 !important;
     box-shadow: 0 4px 16px -3px rgba(79, 70, 229, 0.06);
+    width: 100% !important;
+    box-sizing: border-box !important;
 }
 
 .hero-header-row {
@@ -253,6 +327,7 @@ html.chatbot-fullscreen-open .gradio-container {
     border-radius: 10px !important;
     box-shadow: 0 3px 10px rgba(79, 70, 229, 0.25) !important;
     transition: all 0.2s ease !important;
+    padding: 4px 8px;
 }
 
 .primary-btn-styled:hover {
@@ -524,8 +599,8 @@ body.chatbot-fullscreen-open {
 }
 
 /* 兼容 Gradio 6 内部包裹的直接子 Column 容器，将其撑满并作为垂直弹性盒 */
-#chat-interface-wrapper.chat-wrapper-fullscreen > div,
-#chat-interface-wrapper.chat-wrapper-fullscreen > .column {
+#chat-interface-wrapper.chat-wrapper-fullscreen>div,
+#chat-interface-wrapper.chat-wrapper-fullscreen>.column {
     display: flex !important;
     flex-direction: column !important;
     height: 100% !important;
@@ -556,8 +631,8 @@ body.chatbot-fullscreen-open {
 }
 
 /* 全屏下的输入框区域：停靠在最底部 */
-#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot ~ div,
-#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot ~ form {
+#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot~div,
+#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot~form {
     flex-shrink: 0 !important;
     width: 100% !important;
     margin: 0 !important;
@@ -571,9 +646,9 @@ body.chatbot-fullscreen-open {
 }
 
 /* 清除输入框内部冗余容器的边框，保持单卡片简洁 */
-#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot ~ div .group,
-#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot ~ div .row,
-#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot ~ div .form {
+#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot~div .group,
+#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot~div .row,
+#chat-interface-wrapper.chat-wrapper-fullscreen #main-chatbot~div .form {
     border: none !important;
     box-shadow: none !important;
     background: transparent !important;
@@ -659,10 +734,13 @@ button.stop-button {
 }
 
 @keyframes stop-pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         border-color: #fecaca;
         box-shadow: 0 1px 3px rgba(239, 68, 68, 0.15);
     }
+
     50% {
         border-color: #f87171;
         box-shadow: 0 1px 8px rgba(239, 68, 68, 0.35);
@@ -809,12 +887,12 @@ aside.sidebar {
 }
 
 /* 覆盖 Gradio 对 row 子元素的折行和 min-width 限制 */
-.session-list-header-row > * {
+.session-list-header-row>* {
     min-width: 0 !important;
 }
 
-.session-list-header-row > div:first-child,
-.session-list-header-row > .html {
+.session-list-header-row>div:first-child,
+.session-list-header-row>.html {
     flex: 1 1 auto !important;
     min-width: 0 !important;
     max-width: none !important;

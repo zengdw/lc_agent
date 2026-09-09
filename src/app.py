@@ -385,7 +385,7 @@ _init_ws_val, init_status_html = get_workspace_status_for_session(
 # -------------------------------------------------------------
 with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as demo:
     # 顶部 Hero Header 卡片
-    gr.HTML(hero_card_html)
+    gr.HTML(hero_card_html, elem_classes=["hero-wrapper-block"])
 
     # 左侧会话历史侧边栏
     with gr.Sidebar(label="会话管理", open=True):
@@ -425,6 +425,7 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as
                 "🔄 重新同步索引",
                 variant="secondary",
                 scale=1,
+                elem_classes=["primary-btn-styled"],
             )
 
         # 动态状态显示横幅
@@ -534,9 +535,7 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as
         """点击新建会话按钮：继承当前工作区并联动更新路径与状态"""
         global _current_thread_id, _current_workspace
         ws_to_bind = (current_input_ws or _current_workspace or "").strip()
-        _current_thread_id = create_session(
-            title="新会话", workspace_path=ws_to_bind
-        )
+        _current_thread_id = create_session(title="新会话", workspace_path=ws_to_bind)
         ws_val, status_html = get_workspace_status_for_session(ws_to_bind)
         if ws_val and os.path.exists(ws_val):
             _current_workspace = ws_val
@@ -566,7 +565,9 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as
         sid_to_delete = target_sid.strip() if target_sid else ""
         print(f"[SESSION DELETE] 接收到待删除 target_sid: '{sid_to_delete}'")
         if not sid_to_delete:
-            print("[SESSION DELETE] 警告：未获取到明确的 target_sid，拒绝删除以避免误删！")
+            print(
+                "[SESSION DELETE] 警告：未获取到明确的 target_sid，拒绝删除以避免误删！"
+            )
             msgs = await get_session_messages_for_chatbot(_current_thread_id)
             sess = get_session(_current_thread_id)
             ws_path = sess.get("workspace_path", "") if sess else ""
@@ -586,7 +587,10 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as
         if remaining:
             remaining_ids = [s["session_id"] for s in remaining]
             # 若删除的是当前正在查看的会话，才自动切换到列表第一条；否则保持当前查看的会话
-            if _current_thread_id == sid_to_delete or _current_thread_id not in remaining_ids:
+            if (
+                _current_thread_id == sid_to_delete
+                or _current_thread_id not in remaining_ids
+            ):
                 _current_thread_id = remaining[0]["session_id"]
             msgs = await get_session_messages_for_chatbot(_current_thread_id)
         else:
@@ -681,4 +685,3 @@ if __name__ == "__main__":
         demo.launch(theme=custom_theme, css=custom_css, head=fullscreen_head_html)
     finally:
         os._exit(0)
-
