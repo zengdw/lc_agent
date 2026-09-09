@@ -464,6 +464,7 @@ with gr.Blocks(title="🤖 Code Agent - 全栈代码生成与 RAG 知识库") as
                 scale=8,
                 submit_btn=True,
                 stop_btn=True,
+                elem_id="main-chatbot-input-box",
             ),
             submit_btn=True,
             stop_btn=True,
