@@ -1,8 +1,10 @@
 import sys
 import subprocess
 import importlib
+import shutil
 from typing import Dict, Set, Optional, Tuple
 from tree_sitter import Language
+
 
 
 # 1. 语言名称与别名映射到 pip 安装包名与导入模块名
@@ -243,11 +245,47 @@ LANGUAGE_CONFIGS: Dict[str, Dict[str, Set[str]]] = {
 _LOADED_LANGUAGES: Dict[str, Language] = {}
 
 
+def _ensure_pip_installed() -> bool:
+    """若当前环境无 pip 模块，自动调用 Python 标准库自带的 ensurepip 引导安装 pip，无需手动干预"""
+    try:
+        import pip  # noqa: F401
+        return True
+    except ImportError:
+        pass
+
+    try:
+        print("[AST/PIP] 检测到当前虚拟环境缺少 pip 模块，正在通过 Python 内置 ensurepip 自动初始化...")
+        import ensurepip
+        ensurepip.bootstrap(upgrade=True)
+        print("[AST/PIP] 成功自动初始化 pip！")
+        return True
+    except Exception as e:
+        print(f"[AST/PIP] 自动初始化 pip 失败: {e}")
+        return False
+
+
+def _install_package(pkg_name: str) -> None:
+    """动态安装指定的 Python 包，优先使用 uv，若无则使用 pip（缺失时自动 ensurepip）"""
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        cmd = [uv_bin, "pip", "install", pkg_name]
+    else:
+        _ensure_pip_installed()
+        cmd = [sys.executable, "-m", "pip", "install", pkg_name]
+
+    subprocess.run(
+        cmd,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def get_or_install_language(language: str, auto_install: bool = True) -> Optional[Language]:
     """
     动态获取或自动下载安装指定语言的 Tree-sitter Parser
     :param language: 语言标识（如 'python', 'java', 'html', 'go'）
-    :param auto_install: 若未安装对应包，是否自动通过 pip 安装
+    :param auto_install: 若未安装对应包，是否自动通过 pip/uv 安装
     :return: tree_sitter.Language 实例，若失败则返回 None
     """
     if not language:
@@ -272,15 +310,10 @@ def get_or_install_language(language: str, auto_install: bool = True) -> Optiona
             print(f"[AST] 警告: 未找到 {pkg_name} 模块，跳过 AST 解析")
             return None
 
-        # 3. 动态调用 pip 安装
+        # 3. 动态调用 uv / pip 安装
         print(f"[AST] 检测到未安装语法包，正在自动安装: {pkg_name} ...")
         try:
-            subprocess.run(
-                [sys.executable, "-m", "pip", "install", pkg_name],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+            _install_package(pkg_name)
             # 安装完成后重新加载模块
             mod = importlib.import_module(mod_name)
             print(f"[AST] 成功安装并加载: {pkg_name}")

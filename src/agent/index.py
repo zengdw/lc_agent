@@ -10,33 +10,72 @@ from skills.index import list_available_skills, load_skill, get_skill_file_path
 from tools.index import run_shell_command, get_current_time
 from tools.rag_tools import retrieve_code_context
 
-chat_model = init_chat_model(os.environ["OPENAI_MODEL"])
+chat_model = init_chat_model(os.environ["OPENAI_MODEL"], model_provider="openai")
 
 
 def prune_history_tool_messages(state: dict) -> List[BaseMessage]:
     """
     动态消息预处理：
     1. 确保开头包含 SystemMessage
-    2. 找到最新一轮用户提问的起点
+    2. 严格按大模型协议规范（OpenAI 规范）保证：任何带 tool_calls 的 AIMessage
+       紧随其后必须是对应的 ToolMessage，修复因中断重试导致的人类消息夹塞
     3. 将历史前几轮的超长 ToolMessage 压缩为简短占位符
     """
-    messages = list(state.get("messages", []))
+    raw_messages = list(state.get("messages", []))
 
     # 1. 如果开头没有 SystemMessage，则插入到最前面
-    if not messages or not isinstance(messages[0], SystemMessage):
-        messages.insert(0, SystemMessage(content=CODE_AGENT_SYSTEM_PROMPT))
+    if not raw_messages or not isinstance(raw_messages[0], SystemMessage):
+        raw_messages.insert(0, SystemMessage(content=CODE_AGENT_SYSTEM_PROMPT))
 
-    # 2. 找到最后一个用户提问的位置（标识当前最新一轮对话起点）
+    # 2. 收集所有 ToolMessage 以便按 tool_call_id 精确重排
+    tool_msgs_by_id = {}
+    for m in raw_messages:
+        if isinstance(m, ToolMessage) or getattr(m, "type", "") == "tool":
+            tcid = getattr(m, "tool_call_id", None)
+            if tcid:
+                tool_msgs_by_id[tcid] = m
+
+    # 规范化消息流：遇到带 tool_calls 的 AIMessage，立即紧随其后排入对应 ToolMessage
+    ordered_messages: List[BaseMessage] = []
+    used_tool_call_ids = set()
+
+    for m in raw_messages:
+        if isinstance(m, ToolMessage) or getattr(m, "type", "") == "tool":
+            tcid = getattr(m, "tool_call_id", None)
+            # 若已在对应 AIMessage 之后排入过，跳过避免重复
+            if tcid in used_tool_call_ids:
+                continue
+            ordered_messages.append(m)
+        elif getattr(m, "tool_calls", None):
+            ordered_messages.append(m)
+            for tc in m.tool_calls:
+                tcid = tc.get("id")
+                if tcid:
+                    if tcid in tool_msgs_by_id:
+                        ordered_messages.append(tool_msgs_by_id[tcid])
+                    else:
+                        # 缺失占位 ToolMessage
+                        ordered_messages.append(
+                            ToolMessage(
+                                content="[执行被用户中断或进程超时，未产生有效输出]",
+                                tool_call_id=tcid,
+                                name=tc.get("name", "tool"),
+                            )
+                        )
+                    used_tool_call_ids.add(tcid)
+        else:
+            ordered_messages.append(m)
+
+    # 3. 找到最后一个用户提问的位置（标识当前最新一轮对话起点）
     last_user_idx = -1
-    for idx in range(len(messages) - 1, -1, -1):
-        if getattr(messages[idx], "type", "") in ("user", "human"):
+    for idx in range(len(ordered_messages) - 1, -1, -1):
+        if getattr(ordered_messages[idx], "type", "") in ("user", "human"):
             last_user_idx = idx
             break
 
-    # 3. 遍历并压缩最新一轮之前的历史 ToolMessage
+    # 4. 遍历并压缩最新一轮之前的历史 ToolMessage
     pruned_messages: List[BaseMessage] = []
-    for idx, msg in enumerate(messages):
-        # 仅对最新一轮之前的历史 ToolMessage 进行内容压缩，不影响 State 内的真实完整数据
+    for idx, msg in enumerate(ordered_messages):
         if idx < last_user_idx and isinstance(msg, ToolMessage):
             tool_name = getattr(msg, "name", "tool") or "tool"
             raw_len = len(str(msg.content))
@@ -52,7 +91,6 @@ def prune_history_tool_messages(state: dict) -> List[BaseMessage]:
             )
             pruned_messages.append(pruned_msg)
         else:
-            # 开头的 SystemMessage 以及其他正常消息会自然原样装入
             pruned_messages.append(msg)
 
     return pruned_messages
@@ -78,6 +116,42 @@ async def get_agent(workspace_path: str):
         checkpointer=await get_checkpointer(),
     )
     return agent
+
+
+async def heal_agent_session(agent, config: dict) -> None:
+    """自动检测并修复历史记录中因意外中断/超时导致未闭合的孤立 tool_calls"""
+    try:
+        current_state = await agent.aget_state(config)
+        if not (current_state and current_state.values):
+            return
+
+        history_msgs = current_state.values.get("messages", [])
+        existing_tool_ids = {
+            getattr(m, "tool_call_id", None)
+            for m in history_msgs
+            if getattr(m, "type", "") == "tool" or isinstance(m, ToolMessage)
+        }
+
+        orphan_repair_messages = []
+        for m in history_msgs:
+            if getattr(m, "tool_calls", None):
+                for tc in m.tool_calls:
+                    tc_id = tc.get("id")
+                    if tc_id and tc_id not in existing_tool_ids:
+                        orphan_repair_messages.append(
+                            ToolMessage(
+                                content="[执行被用户中断或进程超时，未产生有效输出]",
+                                tool_call_id=tc_id,
+                                name=tc.get("name", "tool"),
+                            )
+                        )
+                        existing_tool_ids.add(tc_id)
+
+        if orphan_repair_messages:
+            print(f"[Self-Healing] 自动修复 {len(orphan_repair_messages)} 个未闭合的工具调用")
+            await agent.aupdate_state(config, {"messages": orphan_repair_messages})
+    except Exception as e:
+        print(f"[Self-Healing Warning] 状态自愈跳过: {e}")
 
 
 async def main():

@@ -6,13 +6,24 @@ import os
 
 os.environ["NO_PROXY"] = "localhost,127.0.0.1"
 
+# 自动确保当前运行环境具备 pip 模块（针对 uv 等无 pip 虚拟环境，使用 Python 内置 ensurepip 自动初始化，无需手动安装）
+try:
+    import pip  # noqa: F401
+except ImportError:
+    try:
+        import ensurepip
+        ensurepip.bootstrap(upgrade=True)
+    except Exception:
+        pass
+
+
 import asyncio
 import html
 import uuid
 from typing import AsyncGenerator
 
 import gradio as gr
-from agent.index import get_agent
+from agent.index import get_agent, heal_agent_session
 from tools.rag_tools import auto_sync_codebase
 from langgraph.graph.state import CompiledStateGraph
 from langchain_core.runnables import RunnableConfig
@@ -143,6 +154,9 @@ async def predict(
     config: RunnableConfig = {
         "configurable": {"thread_id": _current_thread_id},
     }
+
+    # 自动会话自愈：检测并修复意外中断导致的孤立工具调用
+    await heal_agent_session(agent, config)
 
     response = ""
     current_tool_name = ""
