@@ -1,9 +1,10 @@
 import os, asyncio
-from typing import List
-from langgraph.prebuilt import create_react_agent
+from langgraph.graph import StateGraph, START
+from langgraph.prebuilt import ToolNode, tools_condition
 from langchain.chat_models import init_chat_model
 from agent.session_manager import get_checkpointer
-from langchain_core.messages import BaseMessage, ToolMessage, SystemMessage
+from agent.memory import AgentState, build_model_input, make_memory_node, get_summary_model
+from langchain_core.messages import BaseMessage, ToolMessage
 from prompt.index import CODE_AGENT_SYSTEM_PROMPT
 from mcp_tools.index import get_mcp_tools
 from skills.index import list_available_skills, load_skill, get_skill_file_path
@@ -11,89 +12,8 @@ from tools.index import run_shell_command, get_current_time
 from tools.rag_tools import retrieve_code_context
 
 chat_model = init_chat_model(os.environ["OPENAI_MODEL"], model_provider="openai")
-
-
-def prune_history_tool_messages(state: dict) -> List[BaseMessage]:
-    """
-    动态消息预处理：
-    1. 确保开头包含 SystemMessage
-    2. 严格按大模型协议规范（OpenAI 规范）保证：任何带 tool_calls 的 AIMessage
-       紧随其后必须是对应的 ToolMessage，修复因中断重试导致的人类消息夹塞
-    3. 将历史前几轮的超长 ToolMessage 压缩为简短占位符
-    """
-    raw_messages = list(state.get("messages", []))
-
-    # 1. 如果开头没有 SystemMessage，则插入到最前面
-    if not raw_messages or not isinstance(raw_messages[0], SystemMessage):
-        raw_messages.insert(0, SystemMessage(content=CODE_AGENT_SYSTEM_PROMPT))
-
-    # 2. 收集所有 ToolMessage 以便按 tool_call_id 精确重排
-    tool_msgs_by_id = {}
-    for m in raw_messages:
-        if isinstance(m, ToolMessage) or getattr(m, "type", "") == "tool":
-            tcid = getattr(m, "tool_call_id", None)
-            if tcid:
-                tool_msgs_by_id[tcid] = m
-
-    # 规范化消息流：遇到带 tool_calls 的 AIMessage，立即紧随其后排入对应 ToolMessage
-    ordered_messages: List[BaseMessage] = []
-    used_tool_call_ids = set()
-
-    for m in raw_messages:
-        if isinstance(m, ToolMessage) or getattr(m, "type", "") == "tool":
-            tcid = getattr(m, "tool_call_id", None)
-            # 若已在对应 AIMessage 之后排入过，跳过避免重复
-            if tcid in used_tool_call_ids:
-                continue
-            ordered_messages.append(m)
-        elif getattr(m, "tool_calls", None):
-            ordered_messages.append(m)
-            for tc in m.tool_calls:
-                tcid = tc.get("id")
-                if tcid:
-                    if tcid in tool_msgs_by_id:
-                        ordered_messages.append(tool_msgs_by_id[tcid])
-                    else:
-                        # 缺失占位 ToolMessage
-                        ordered_messages.append(
-                            ToolMessage(
-                                content="[执行被用户中断或进程超时，未产生有效输出]",
-                                tool_call_id=tcid,
-                                name=tc.get("name", "tool"),
-                            )
-                        )
-                    used_tool_call_ids.add(tcid)
-        else:
-            ordered_messages.append(m)
-
-    # 3. 找到最后一个用户提问的位置（标识当前最新一轮对话起点）
-    last_user_idx = -1
-    for idx in range(len(ordered_messages) - 1, -1, -1):
-        if getattr(ordered_messages[idx], "type", "") in ("user", "human"):
-            last_user_idx = idx
-            break
-
-    # 4. 遍历并压缩最新一轮之前的历史 ToolMessage
-    pruned_messages: List[BaseMessage] = []
-    for idx, msg in enumerate(ordered_messages):
-        if idx < last_user_idx and isinstance(msg, ToolMessage):
-            tool_name = getattr(msg, "name", "tool") or "tool"
-            raw_len = len(str(msg.content))
-            pruned_content = (
-                f"[历史工具 `{tool_name}` 输出已折叠，长度: {raw_len} 字符]"
-            )
-
-            pruned_msg = ToolMessage(
-                content=pruned_content,
-                tool_call_id=msg.tool_call_id,
-                name=msg.name,
-                status=getattr(msg, "status", "success"),
-            )
-            pruned_messages.append(pruned_msg)
-        else:
-            pruned_messages.append(msg)
-
-    return pruned_messages
+# 历史摘要压缩使用独立模型（SUMMARY_* 环境变量，未配置则回退到主模型配置）
+summary_model = get_summary_model()
 
 
 async def get_agent(workspace_path: str):
@@ -109,12 +29,28 @@ async def get_agent(workspace_path: str):
         get_current_time,
     ] + await get_mcp_tools(ws)
 
-    agent = create_react_agent(
-        model=chat_model,
-        tools=tools,
-        prompt=prune_history_tool_messages,
-        checkpointer=await get_checkpointer(),
-    )
+    model_with_tools = chat_model.bind_tools(tools)
+
+    async def call_model(state: AgentState) -> dict:
+        """agent 节点：注入系统提示词 + 历史摘要，规范化/折叠消息后调用模型"""
+        model_input = build_model_input(state, CODE_AGENT_SYSTEM_PROMPT)
+        response = await model_with_tools.ainvoke(model_input)
+        return {"messages": [response]}
+
+    # 图结构：START → memory → agent ─(有工具调用)→ tools → memory → agent ...
+    #                                  └(无工具调用)→ END
+    # memory 节点在每次调用模型前检查 token 长度，必要时压缩滑动窗口外的历史
+    graph = StateGraph(AgentState)
+    graph.add_node("memory", make_memory_node(summary_model))
+    graph.add_node("agent", call_model)
+    graph.add_node("tools", ToolNode(tools))
+
+    graph.add_edge(START, "memory")
+    graph.add_edge("memory", "agent")
+    graph.add_conditional_edges("agent", tools_condition)  # → "tools" 或 END
+    graph.add_edge("tools", "memory")
+
+    agent = graph.compile(checkpointer=await get_checkpointer())
     return agent
 
 
