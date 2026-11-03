@@ -293,15 +293,52 @@
     };
 
     window.__openModelModal = function () {
+        const overlay = document.getElementById("model-config-modal-overlay");
+        if (overlay) {
+            overlay.classList.remove("hidden", "hide");
+            overlay.removeAttribute("hidden");
+            overlay.style.removeProperty("display");
+        }
         const triggerBtn = document.getElementById("open-model-modal-btn") || document.querySelector("#open-model-modal-btn button");
         if (triggerBtn) {
             triggerBtn.click();
         }
     };
 
-    // 监听 ESC 键退出全屏
+    window.__closeModelModal = function () {
+        const overlay = document.getElementById("model-config-modal-overlay");
+        if (overlay) {
+            overlay.classList.add("hidden");
+            overlay.style.setProperty("display", "none", "important");
+        }
+        const closeBtn = document.getElementById("close-modal-btn") || document.querySelector("#close-modal-btn button");
+        if (closeBtn) {
+            closeBtn.click();
+        }
+    };
+
+    // 监听全局点击事件：点击关闭按钮或点击遮罩层外部空白区域时即时关闭
+    document.addEventListener("click", function (e) {
+        if (!e.target) return;
+        if (e.target.closest("#close-modal-btn")) {
+            window.__closeModelModal();
+            return;
+        }
+        const overlay = document.getElementById("model-config-modal-overlay");
+        if (overlay && e.target === overlay) {
+            // 点击遮罩层半透明背景区域，一键优雅退出弹窗
+            window.__closeModelModal();
+        }
+    }, true);
+
+    // 监听 ESC 键：若弹窗处于打开状态优先退出弹窗，否则退出网页全屏
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
+            const overlay = document.getElementById("model-config-modal-overlay");
+            if (overlay && !overlay.classList.contains("hidden") && overlay.style.display !== "none" && overlay.offsetParent !== null) {
+                window.__closeModelModal();
+                return;
+            }
             if (isFullscreenActive()) {
                 toggleFullscreen(false);
             }

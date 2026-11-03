@@ -1400,7 +1400,26 @@ aside.sidebar {
 }
 
 /* 模态弹窗遮罩层与居中卡片 */
-#model-config-modal-overlay {
+/* 当模态弹窗处于隐藏状态时（含有 .hidden、.hide 类名、或拥有 [hidden] 属性），彻底销毁并隐藏遮罩层 */
+#model-config-modal-overlay.hidden,
+#model-config-modal-overlay[hidden],
+#model-config-modal-overlay.hide,
+#model-config-modal-overlay[style*="display: none"],
+.gradio-container #model-config-modal-overlay.hidden,
+.gradio-container #model-config-modal-overlay[hidden],
+.gradio-container #model-config-modal-overlay.hide,
+.gradio-container div#model-config-modal-overlay.hidden,
+.gradio-container div#model-config-modal-overlay[hidden] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    backdrop-filter: none !important;
+    background: transparent !important;
+}
+
+/* 仅在非隐藏状态下生效全屏居中与毛玻璃遮罩 */
+#model-config-modal-overlay:not(.hidden):not([hidden]):not(.hide):not([style*="display: none"]) {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
