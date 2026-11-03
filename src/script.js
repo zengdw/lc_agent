@@ -292,6 +292,13 @@
         }
     };
 
+    window.__openModelModal = function () {
+        const triggerBtn = document.getElementById("open-model-modal-btn") || document.querySelector("#open-model-modal-btn button");
+        if (triggerBtn) {
+            triggerBtn.click();
+        }
+    };
+
     // 监听 ESC 键退出全屏
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
@@ -301,11 +308,50 @@
         }
     });
 
+    // 彻底解决 Chromium 浏览器中 fixed 元素的 :has 延迟重排 bug：
+    // 将展开/折叠状态直接同构为 .sidebar-parent 上的 .left-open 和 .right-open 类名，
+    // 并在状态变更时主动触发 window.resize，促使 Chatbot 等内部虚拟容器在 0 毫秒内完成重绘与重排。
+    function syncSidebarClasses() {
+        const sidebarParent = document.querySelector(".sidebar-parent");
+        if (!sidebarParent) return;
+
+        // 清理任何可能的内联残留
+        sidebarParent.style.removeProperty("padding-left");
+        sidebarParent.style.removeProperty("padding-right");
+        document.documentElement.style.removeProperty("--overlap-amount");
+
+        const leftOpen = !!document.querySelector(".sidebar.open:not(.right)");
+        const rightOpen = !!document.querySelector(".sidebar.open.right");
+
+        const wasLeftOpen = sidebarParent.classList.contains("left-open");
+        const wasRightOpen = sidebarParent.classList.contains("right-open");
+
+        sidebarParent.classList.toggle("left-open", leftOpen);
+        sidebarParent.classList.toggle("right-open", rightOpen);
+
+        if (wasLeftOpen !== leftOpen || wasRightOpen !== rightOpen) {
+            // 立即触发重排，无需等待滚动
+            window.dispatchEvent(new Event("resize"));
+            setTimeout(() => {
+                window.dispatchEvent(new Event("resize"));
+            }, 260); // 对应 0.25s CSS 过渡动画结束时再次精准校准
+        }
+    }
+
     function init() {
         injectFullscreenBtn();
         attachScrollListener();
         customizeInputButtons();
+        syncSidebarClasses();
     }
+
+    // 监听折叠按钮点击事件，立即在下一个动画帧同步状态与触发重绘
+    document.addEventListener("click", function (e) {
+        if (e.target && e.target.closest(".toggle-button")) {
+            requestAnimationFrame(syncSidebarClasses);
+            setTimeout(syncSidebarClasses, 50);
+        }
+    }, true);
 
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", init);
@@ -319,6 +365,7 @@
         injectFullscreenBtn();
         attachScrollListener();
         customizeInputButtons();
+        syncSidebarClasses();
 
         // 当内容变动（Agent 流式生成）时，触发吸底
         if (autoScrollEnabled) {
@@ -334,6 +381,8 @@
     obs.observe(document.documentElement, {
         childList: true,
         subtree: true,
-        characterData: true
+        characterData: true,
+        attributes: true,
+        attributeFilter: ["class"]
     });
 })();
