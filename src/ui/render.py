@@ -39,17 +39,32 @@ def format_tool_display_html(tool_name: str, tool_args: str, tool_output: str) -
 
 
 def _stage_badge(tool_name: str, output: str) -> tuple[str, str]:
-    text = output or ""
-    if "失败" in text.split("\n", 1)[0] or "无法开始" in text[:40]:
-        return "失败", "badge-failed"
+    text = (output or "").strip()
+    first_line = text.split("\n", 1)[0] if text else ""
+
     if tool_name == DELEGATE_TESTING:
-        if "❌" in text[:120]:
-            return "未通过", "badge-failed"
-        if "✅" in text[:120]:
+        # 优先解析测试明确结论，严防统计文本中的“失败 0”被误判为失败
+        if "✅" in first_line or ("通过" in first_line and "❌" not in first_line and "未通过" not in first_line):
             return "通过", "badge-success"
+        if "❌" in first_line or "未通过" in first_line:
+            return "未通过", "badge-failed"
+        if "⚠️" in first_line:
+            return "待确认", "badge-warn"
         return "已完成", "badge-warn"
+
     if tool_name == DELEGATE_DESIGN:
+        if "设计失败" in first_line or "无法开始" in first_line:
+            return "失败", "badge-failed"
         return "待确认", "badge-warn"
+
+    if tool_name == DELEGATE_CODING:
+        if "失败】" in first_line or "无法开始" in first_line or "执行失败" in first_line:
+            return "失败", "badge-failed"
+        return "已完成", "badge-success"
+
+    # 通用兜底匹配（精准匹配错误标志，避免普通文本误伤）
+    if "失败】" in first_line or "无法开始" in first_line or "执行失败" in first_line:
+        return "失败", "badge-failed"
     return "已完成", "badge-success"
 
 

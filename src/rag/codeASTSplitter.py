@@ -111,10 +111,16 @@ class CodeASTSplitter:
                     else (name or scope_prefix)
                 )
 
-                # 仅容器节点超长时才递归下钻拆分子节点；函数/方法本身保持完整
+                # 仅容器节点超长时递归下钻拆分子节点；对于超长单体函数/方法，进行安全二级切分防止超出模型上下文
                 if len(node_text) > self.max_chunk_size and self._is_container(node):
                     for child in node.children:
                         traverse(child, current_scope, is_top_level=False)
+                elif len(node_text) > self.max_chunk_size * 2:
+                    sub_chunks = self._fallback_line_split(file_path, node_text, header_context)
+                    for sc in sub_chunks:
+                        sc.name = f"{name}.{sc.name}"
+                        sc.context = f"// File: {file_path}\n// Scope: {current_scope}\n{header_context}\n"
+                        chunks.append(sc)
                 else:
                     context = f"// File: {file_path}\n// Scope: {current_scope}\n{header_context}\n"
                     chunk_type = node.type

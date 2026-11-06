@@ -119,8 +119,8 @@ def describe_model(role: str) -> str:
 
 
 # ===================== 模型实例化 =====================
-def create_chat_model(role: str, temperature: Optional[float] = None):
-    """按角色创建（并缓存）聊天模型实例"""
+def create_chat_model(role: str, temperature: Optional[float] = None, proxy: Optional[str] = None):
+    """按角色创建（并缓存）聊天模型实例，支持 HTTP/HTTPS 代理配置"""
     cfg = get_model_config(role)
     if not cfg["model"]:
         raise ValueError(
@@ -130,18 +130,37 @@ def create_chat_model(role: str, temperature: Optional[float] = None):
     temp = temperature if temperature is not None else (
         float(cfg["temperature"]) if cfg["temperature"] else None
     )
-    key = (cfg["provider"], cfg["model"], cfg["base_url"], cfg["api_key"], temp)
+
+    # 解析有效代理地址：显式传入 > 环境变量 > 未配置时为 None（直连不使用代理）
+    raw_proxy = (
+        proxy
+        or os.getenv("OPENAI_PROXY")
+        or os.getenv("HTTPS_PROXY")
+        or os.getenv("HTTP_PROXY")
+        or os.getenv("https_proxy")
+        or os.getenv("http_proxy")
+    )
+    effective_proxy = raw_proxy.strip() if raw_proxy and raw_proxy.strip() else None
+
+    key = (cfg["provider"], cfg["model"], cfg["base_url"], cfg["api_key"], temp, effective_proxy)
     with _lock:
         if key in _model_cache:
             return _model_cache[key]
 
-    kwargs: Dict[str, Any] = {"model_provider": cfg["provider"] or "openai"}
+    provider = cfg["provider"] or "openai"
+    kwargs: Dict[str, Any] = {"model_provider": provider}
     if cfg["base_url"]:
         kwargs["base_url"] = cfg["base_url"]
     if cfg["api_key"]:
         kwargs["api_key"] = cfg["api_key"]
     if temp is not None:
         kwargs["temperature"] = temp
+    if effective_proxy:
+        if provider == "openai":
+            kwargs["openai_proxy"] = effective_proxy
+        else:
+            kwargs["proxy"] = effective_proxy
+
     model = init_chat_model(cfg["model"], **kwargs)
     with _lock:
         _model_cache[key] = model

@@ -134,7 +134,9 @@ class QdrantCodeHybridRAG:
                     dense_embeddings = await self.dense_model.aembed_documents(texts)
                     break
                 except Exception as embed_err:
-                    print(f"[RAG Embedding] 向量生成异常，尝试第 {attempt}/3 次重试: {embed_err}")
+                    print(
+                        f"[RAG Embedding] 向量生成异常，尝试第 {attempt}/3 次重试: {embed_err}"
+                    )
                     if attempt < 3:
                         await asyncio.sleep(2 * attempt)
                     else:

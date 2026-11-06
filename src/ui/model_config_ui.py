@@ -65,13 +65,13 @@ def build_model_config_ui():
                                     label="模型名称 (Model)",
                                     value=cur_override.get("model", ""),
                                     placeholder=f"继承: {inherited.get('model', '(未配置)')}",
-                                    scale=6,
+                                    scale=5,
                                 )
                                 temp_in = gr.Textbox(
                                     label="采样温度 (Temperature)",
                                     value=cur_override.get("temperature", ""),
                                     placeholder=inherited.get("temperature", "默认"),
-                                    scale=3,
+                                    scale=4,
                                 )
 
                             # 第 2 行：Base URL + API Key
